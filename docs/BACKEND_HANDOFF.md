@@ -2,7 +2,7 @@
 
 ## 결론
 
-AI가 PDF 분석에 받는 값은 `complex_id`, `pdf_url` 두 개가 필수입니다. 선택 주택형의 비용·정액 납부를 정확히 대조하려면 `unit_type_id`, `unit_type_name`, `sale_price_manwon`을 선택값으로 함께 받습니다.
+문서 공통 분석만 수행할 때는 `complex_id`, `pdf_url` 두 개로 충분합니다. 선택 주택형의 실제 자금판정에 사용할 분석 요청은 `unit_type_id`, `unit_type_name`, `sale_price_manwon`까지 **총 5개를 모두** 보내야 합니다. 세 target 필드 중 일부만 보내면 HTTP 422를 반환합니다.
 
 대출 상품, 사용자 소득, 보유 현금은 AI 입력이 아닙니다. AI는 공고문 사실을 추출하고, backend가 그 결과를 사용자 조건·규칙표와 결합해 대출 경로와 완주 가능성을 계산합니다.
 
@@ -27,7 +27,7 @@ AI가 PDF 분석에 받는 값은 `complex_id`, `pdf_url` 두 개가 필수입�
 - `AI_SERVER_URL`에는 경로까지 포함합니다: `https://<ai-host>/api/analyze`
 - 외부 환경에서는 `Authorization: Bearer <AI_API_KEY>` 헤더가 필수입니다.
 - 동기 연결 시험의 read timeout은 310초 이상으로 둡니다. 실제 서비스 판정 요청에서 매번 모델을 호출하지 않고, 사전 분석·검수본을 읽는 구조가 원칙입니다.
-- 동시 분석은 1건입니다. 처리 중이면 `503 ANALYSIS_SERVER_BUSY`를 반환하므로 짧은 지수 백오프로 재시도합니다.
+- 신규 Qwen 분석은 동시 1건입니다. 처리 중인 분석이 있더라도 exact `REVIEWED` 검수본 조회는 세마포어 밖에서 먼저 처리됩니다. 검수본이 없는 신규 분석끼리 경합하면 `503 ANALYSIS_SERVER_BUSY`를 반환하므로 짧은 지수 백오프로 재시도합니다.
 - crawler의 10분짜리 URL은 호출 직전에 새로 만들고 캐시하지 않습니다. `401/403` 또는 retryable 다운로드 오류이면 새 URL을 발급합니다.
 - 주택형을 지정하면 `unit_type_id`, `unit_type_name`, `sale_price_manwon`을 모두 보내야 합니다. 하나라도 빠지면 HTTP 422입니다.
 - live backend 매핑은 `unit_types[].unit_type_id → unit_type_id`, `type → unit_type_name`, `sale_price → sale_price_manwon`입니다. AI는 `059.9883A`를 PDF 약식명 `59A`로 정규화합니다.
@@ -36,10 +36,12 @@ AI가 PDF 분석에 받는 값은 `complex_id`, `pdf_url` 두 개가 필수입�
 ## 분석·검수·적재 단위
 
 MVP는 공고 한 건을 한 번만 분석하는 것이 아니라 backend의 각 `unit_types[]`를
-`(complex_id, unit_type_id, sale_price_manwon)` 키로 사전 분석합니다. `/api/analyze`의
-응답은 항상 `AUTO_EXTRACTED`이며 연결 시험과 검수 재료입니다. 사람이 공고 원문을
-대조해 `REVIEWED`로 승인한 JSON만 backend 저장소에 같은 키로 적재하고 사용자 판정에
-사용합니다. 사용자가 공고를 누를 때 Qwen을 새로 호출하면 안 됩니다.
+`(source_sha256, complex_id, unit_type_id, sale_price_manwon)` 불변 키로 사전 분석합니다.
+`/api/analyze`는 fresh URL에서 PDF를 먼저 수령해 SHA-256을 계산하고, 정확히 같은 키의
+`REVIEWED` 검수본이 있으면 Qwen 재호출 없이 반환합니다. 검수본이 없으면
+`AUTO_EXTRACTED`를 반환하고 backend는 사용자 자금판정을 HOLD합니다. `REVIEWED`에는
+검수자·검수시각·검증 통과와 정확한 대상 키가 반드시 있어야 합니다. `unit_type_name`은
+`059.9883A → 59A` 정규화 때문에 조회 키에서는 제외하지만 응답에는 정규화해 보존합니다.
 
 ## AI 증거 응답 — 최종 금융판정 아님
 
@@ -68,6 +70,8 @@ MVP는 공고 한 건을 한 번만 분석하는 것이 아니라 backend의 각
 }
 ```
 
+`arranged_ratio=0.40`은 개인이 40%를 승인받았다는 뜻이 아니라 **공고문상 사업장 알선 상한**입니다. `self_funding_origin=DERIVED`인 20%는 사업장 알선으로 충당되지 않는 별도 조달 구간이며, backend가 사용자의 현금만으로 조달한다고 단정하면 안 됩니다. 다만 MVP 보수 판정에서 확정된 별도 조달 경로가 없으면 해당 금액을 자금 필요액에 반영하고 `CONDITIONAL`/HOLD를 표시합니다.
+
 `analysis_summary`는 LLM 자유 조언이나 사용자 최종 진단이 아닙니다. 예시는 다음과 같습니다.
 
 > 계약금은 분양가의 10%입니다. 중도금은 분양가의 60%입니다. 잔금은 분양가의 30%입니다. 공고문상 분양가의 40% 범위에서 중도금 대출을 알선할 예정입니다. 실제 실행과 개인 승인은 확정되지 않았습니다. 중도금 중 분양가의 20%는 직접 납부해야 합니다. 취급은행은 공고문에 공개되지 않았습니다.
@@ -92,7 +96,7 @@ MVP는 공고 한 건을 한 번만 분석하는 것이 아니라 backend의 각
 
 자납 20%의 회차별 배분이 공고문에 없으면 특정 날짜를 임의 생성하지 않습니다. `first_discontinuity.stage=INTERIM`, 날짜는 `null`, `certainty=CONDITIONAL`로 두고 HOLD 질문을 표시해야 합니다.
 
-대표 데모는 공공데이터만으로 계산할 때와 AI 검수본의 `중도금 60%·알선 예정 40%·자납 20%`를 반영했을 때 부족액과 `funding_status`가 달라지는 장면입니다. 수치는 반드시 실제 공고문과 backend 계산 결과를 사용합니다.
+`2026000372` 실측 데모에서 중도금 60%를 전액 대출로 가정하면 최초 자금 단절은 `BALANCE`, `2030-01`, 부족액 2,595만 원입니다. 검수된 공고문 조건인 중도금 60%·사업장 알선 상한 40%·알선 외 조달 구간 20%를 반영하면 최초 단절은 `INTERIM`, 날짜 `null`, 부족액 21,730만 원으로 바뀌며 19,135만 원 증가합니다. 알선은 예정·비보장 상태이므로 최종 상태는 `HOLD`, 확정도는 `CONDITIONAL`입니다. 이 데모를 `GAP→BLOCK`으로 표현하지 않습니다.
 
 ## 미래 규정·상환 시나리오
 
@@ -109,11 +113,13 @@ MVP는 공고 한 건을 한 번만 분석하는 것이 아니라 backend의 각
 
 HOLD 문구는 `docs/HOLD_CODES.md` 및 `holds.py`에 고정되어 있습니다. 같은 입력이면 같은 문구가 반환됩니다.
 
-## 현재 Java backend가 먼저 고칠 부분
+## backend 통합 상태
 
-현재 Java DTO는 v0.3 정본을 손실 없이 받을 수 없습니다. 특히 60% 중도금에서 분양가 대비 대출 40%를 정확히 표현하지 못하고, 정액 중도금도 받지 못합니다. AI가 값을 왜곡해 맞추지 않고 `/api/analyze/legacy`에서 위험한 변환을 거부합니다.
+로컬 `codex/ai-v03-integration` 브랜치(`a2d67a3`)에는 canonical v0.3 역직렬화, 5개 요청 필드, Bearer 인증, 310초 timeout, `REVIEWED` 검증, 납부 타임라인·최초 자금 단절·부족액 계산, `interimFinancing` 응답이 구현되어 전체 Gradle 테스트를 통과했습니다.
 
-backend는 다음을 지원해야 합니다.
+GitHub `origin/develop`(`b6c6156`)에는 위 6개 커밋이 아직 병합되지 않았습니다. 따라서 원격 저장소 기준 backend는 여전히 구형 계약이며, 로컬 통합 브랜치 또는 `/mnt/20t/AI_해커톤/backend-ai-v03-integration.patch`를 병합해야 합니다. 패치 SHA-256은 `6644ac0a4729130c5a6ea2d9e6e8b95edd13981136e518045496de2ba76f68d0`입니다.
+
+아래 항목은 미구현 목록이 아니라 `origin/develop` 병합 확인 목록입니다.
 
 - snake_case 정본 역직렬화 또는 명시적 매핑
 - 대출·자납 비율을 총 분양가 기준으로 수신
@@ -127,6 +133,6 @@ backend는 다음을 지원해야 합니다.
 - 중도금 회차·추가비용 회차를 날짜순 납부 이벤트로 만들고 첫 부족 이벤트를 계산
 - 자납 회차가 미확정이면 특정 날짜를 만들지 않고 `INTERIM/CONDITIONAL`로 표시
 
-현재 backend의 legacy DTO와 총액 중심 계산은 `중도금 60% × 대출 40% = 24%`로 오해할 수 있습니다. 정본의 `arranged_ratio=0.40`은 이미 **총 분양가 대비 40%**이므로 다시 중도금 비율을 곱하면 안 됩니다.
+`origin/develop`의 legacy DTO와 총액 중심 계산은 `중도금 60% × 대출 40% = 24%`로 오해할 수 있습니다. 정본의 `arranged_ratio=0.40`은 이미 **총 분양가 대비 40%**이므로 다시 중도금 비율을 곱하면 안 됩니다.
 
 세부 차이는 `docs/BACKEND_COMPATIBILITY.md`에 정리돼 있습니다.

@@ -2,14 +2,14 @@
 
 Get-MyHome은 청약 당첨 이후 계약금·중도금·잔금 사이의 자금 단절 위험을 사전에 진단합니다. 이 저장소는 그 진단을 바꾸는 공고문 금융조건과 불확실성을 페이지 근거와 함께 구조화하는 **AI 증거 계층**입니다.
 
-> 중도금 60%는 대출 60%가 아닙니다. AI가 실제 알선비율·자납비율·확정도를 읽으면 backend의 최초 자금 단절 구간과 부족액 판정이 달라집니다.
+> 중도금 60%는 대출 60%가 아닙니다. AI가 공고문상 사업장 대출 알선 상한·알선 외 별도 조달 구간·확정도를 읽으면 backend의 최초 자금 단절 구간과 부족액 판정이 달라집니다. 알선 상한은 개인 승인액을 뜻하지 않습니다.
 
 ## 역할 경계
 
-1. `crawler`가 청약홈에서 공고문을 수집하고 S3에 저장합니다.
-2. 이 저장소는 crawler가 준 `complex_id`와 짧게 유효한 `pdf_url`을 즉시 수령하거나, 개발 중에는 로컬 PDF를 입력받습니다.
-3. AI는 문서 사실만 추출합니다. backend는 사용자 조건과 검수된 문서 데이터를 결합해 납부 타임라인, 최초 자금 단절 구간·예상 시점·부족액·확정도를 계산합니다.
-4. 자동 검증을 통과해도 `AUTO_EXTRACTED`이며, 사람 검수 후 `REVIEWED`가 된 결과만 backend 적재 대상입니다.
+1. `crawler`가 청약홈에서 공고문을 수집해 S3에 저장하고 fresh pre-signed URL을 backend에 반환합니다.
+2. backend가 공고번호·PDF URL에 선택 주택형 ID·명칭·최고 분양가를 결합해 AI를 호출합니다. 개발 중에는 로컬 PDF를 동일한 파이프라인에 입력할 수 있습니다.
+3. AI는 문서 사실과 근거만 반환합니다. backend는 사용자 조건과 검수된 문서 데이터를 결합해 납부 타임라인, 최초 자금 단절 구간·예상 시점·부족액·확정도를 계산합니다.
+4. 자동 검증을 통과해도 `AUTO_EXTRACTED`이며, 사람 검수 후 `REVIEWED`가 된 결과만 backend 자금판정에 사용합니다.
 
 청약홈 페이지를 찾거나 크롤링하는 코드는 이 저장소에 두지 않습니다.
 
@@ -38,7 +38,7 @@ Get-MyHome은 청약 당첨 이후 계약금·중도금·잔금 사이의 자금
 - 개발·평가: 로컬 PDF 입력
 - 운영 연동: crawler가 만든 S3 pre-signed URL 입력
 - 자동 추출본: `artifacts/auto/`
-- 사람 검수 완료본: `artifacts/reviewed/`
+- 사람 검수 완료본: `artifacts/reviewed/`(PDF SHA-256·공고·주택형·분양가로 잠금)
 
 ## 설치
 
@@ -48,10 +48,10 @@ Python 3.12와 `pdftotext`(Ubuntu 패키지 `poppler-utils`)가 필요합니다.
 python -m pip install -e '.[dev]'
 ```
 
-기본 provider는 로컬 Ollama의 `qwen3:8b`입니다. 현재 8GB GPU에서 골든 3건을 실행하는 개발 기준 모델이며, 27건 전체 성능 수치는 수작업 라벨링과 검수 후에만 공개합니다. 모델 출력만 믿지 않고 고정 근거 검증과 사람 검수를 항상 적용합니다.
+기본 provider는 로컬 Ollama의 `qwen3.5:9b`입니다. 사람이 원본 PDF를 대조해 잠근 24개 공고문을 독립 재실행한 결과, 평가 범위의 핵심 라벨 260/260이 일치했고 문서별 핵심 필드·안전성 판정도 각각 24/24가 일치했습니다. 공고문 전체 검수에서 값이 미기재된 것으로 확인된 라벨 4개는 모두 값을 생성하지 않고 안전하게 기권했습니다. 이 수치는 주택형별 금액·추가비용·은행명·보증기관을 제외한 문서 단위 핵심 필드에만 적용되며, 근거 문장의 의미적 정확도는 아직 별도 사람 채점이 없어 `NOT_EVALUATED`입니다. 따라서 이를 “27건 전체 필드 정확도 100%” 또는 “근거 정확도 100%”라고 표현하지 않습니다. 모델 출력에는 고정 근거 검증과 사람 검수를 계속 적용합니다.
 
 ```bash
-ollama pull qwen3:8b
+ollama pull qwen3.5:9b
 OLLAMA_HOST=127.0.0.1:11434 OLLAMA_NUM_PARALLEL=1 ollama serve
 ```
 
@@ -105,7 +105,7 @@ get-myhome-ai --provider fixture evaluate \
   --output artifacts/evaluation/golden-fixture-report.json
 ```
 
-fixture 평가는 PDF 수령·페이지 추출·후보 선택·고정 검증·근거 연결을 재현하는 테스트이지 LLM 정확도 측정이 아닙니다. 실제 모델 평가는 `AI_PROVIDER=ollama`(기본 `qwen3:8b`) 또는 선택한 provider로 같은 명령을 실행해 별도로 측정합니다.
+fixture 평가는 PDF 수령·페이지 추출·후보 선택·고정 검증·근거 연결을 재현하는 테스트이지 LLM 정확도 측정이 아닙니다. 실제 모델 평가는 `AI_PROVIDER=ollama`(기본 `qwen3.5:9b`) 또는 선택한 provider로 같은 명령을 실행해 별도로 측정합니다.
 
 ## 선택형 HTTP API
 
@@ -135,9 +135,9 @@ curl -X POST 'https://<ai-host>/api/analyze' \
   }'
 ```
 
-이 응답은 `AUTO_EXTRACTED` 분석본입니다. backend 연동 시험과 검수 큐에는 사용할 수 있지만, 사용자 자금판정에는 사람이 승인한 `REVIEWED` 데이터만 사용합니다. 동기 연동 시험의 backend read timeout은 310초 이상이어야 하며, 10분짜리 PDF URL은 캐시하지 않습니다.
+서버는 먼저 PDF를 수령해 SHA-256을 계산합니다. 동일한 PDF SHA-256·공고번호·주택형 ID·분양가의 `REVIEWED` 검수본이 있으면 Qwen을 다시 호출하지 않고 그 검수본을 반환합니다. 없으면 `AUTO_EXTRACTED`를 반환하며 backend는 사용자 계산을 HOLD합니다. 단순히 `review_status` 문자열만 바꾼 데이터는 사용할 수 없고 검수자·검수시각·검증 통과·정확한 소스/대상 키가 모두 필요합니다. 신규 분석의 backend read timeout은 310초 이상이어야 하며, 10분짜리 PDF URL 자체는 캐시하지 않습니다.
 
-현재 backend가 URL 자체에 POST하므로 서버 방식으로 연동할 때는 `AI_SERVER_URL=http://ai-host:9000/api/analyze`처럼 경로까지 넣어야 합니다. 주택형을 지정할 때 세 target 필드는 전부 보내야 하며, backend의 `059.9883A` 표기는 AI 내부에서 PDF 약식명 `59A`로 정규화합니다. 정본 계약과 현재 Java DTO의 손실 문제는 `docs/BACKEND_COMPATIBILITY.md`를 확인하세요.
+로컬 `codex/ai-v03-integration` backend 브랜치는 URL 자체에 POST하므로 `AI_SERVER_URL=http://ai-host:9000/api/analyze`처럼 경로까지 넣어야 합니다. 주택형을 지정할 때 세 target 필드는 전부 보내야 하며, backend의 `059.9883A` 표기는 AI 내부에서 PDF 약식명 `59A`로 정규화합니다. 로컬 통합 브랜치는 정본 v0.3 수신과 자금판정을 구현했지만 GitHub `origin/develop`은 아직 구형 DTO이므로, 통합 브랜치 병합 전까지는 `docs/BACKEND_COMPATIBILITY.md`의 손실 문제가 남아 있습니다.
 
 ## 검증
 

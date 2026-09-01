@@ -1,0 +1,196 @@
+{
+  "schema_version": "core_reference_v0.1",
+  "complex_id": "2026000382",
+  "source": {
+    "pdf_filename": "2026000382_2.pdf",
+    "text_filename": "2026000382_2.txt",
+    "pdf_sha256": "2d2b5d419bf0e733cf4a4cddecb84d8c5f0cb424e41f6edbf94bc298082ad89a",
+    "page_count": 74
+  },
+  "review": {
+    "text_source_review": "COMPLETE",
+    "pdf_visual_review": "COMPLETE",
+    "scope": "DOCUMENT_LEVEL_CORE",
+    "excluded_fields": {
+      "unit_specific_amounts": "NOT_LABELED_UNIT_REQUIRED",
+      "additional_costs": "NOT_LABELED_UNIT_REQUIRED",
+      "bank_names": "NOT_LABELED_EXPLICIT_LOAN_BANK_REQUIRED",
+      "guarantee_provider": "NOT_LABELED_EXPLICIT_PROVIDER_REQUIRED"
+    },
+    "notes": [
+      "2026-10-07 is the second contract-payment date; interim installment 1 is 2026-11-20.",
+      "Payment table was visually checked against PDF page 9."
+    ]
+  },
+  "labels": {
+    "payment_schedule": {
+      "down_payment_ratio": {
+        "value": 0.05,
+        "verification": "VERIFIED_TEXT",
+        "evidence": [
+          {
+            "page": 9,
+            "raw_text": "계약금(5%) 중도금(60%) 잔금(35%)"
+          }
+        ]
+      },
+      "interim_payment_ratio": {
+        "value": 0.6,
+        "verification": "VERIFIED_TEXT",
+        "evidence": [
+          {
+            "page": 9,
+            "raw_text": "계약금(5%) 중도금(60%) 잔금(35%)"
+          }
+        ]
+      },
+      "balance_payment_ratio": {
+        "value": 0.35,
+        "verification": "VERIFIED_TEXT",
+        "evidence": [
+          {
+            "page": 9,
+            "raw_text": "계약금(5%) 중도금(60%) 잔금(35%)"
+          }
+        ]
+      },
+      "interim_installments": {
+        "value": [
+          {
+            "number": 1,
+            "ratio": 0.1,
+            "due_date": "2026-11-20"
+          },
+          {
+            "number": 2,
+            "ratio": 0.1,
+            "due_date": "2027-12-10"
+          },
+          {
+            "number": 3,
+            "ratio": 0.1,
+            "due_date": "2029-03-12"
+          },
+          {
+            "number": 4,
+            "ratio": 0.1,
+            "due_date": "2030-06-10"
+          },
+          {
+            "number": 5,
+            "ratio": 0.1,
+            "due_date": "2030-10-10"
+          },
+          {
+            "number": 6,
+            "ratio": 0.1,
+            "due_date": "2031-05-12"
+          }
+        ],
+        "verification": "VERIFIED_NORMALIZED",
+        "evidence": [
+          {
+            "page": 9,
+            "raw_text": "2026.11.20."
+          },
+          {
+            "page": 9,
+            "raw_text": "2027.12.10."
+          },
+          {
+            "page": 9,
+            "raw_text": "2029.03.12."
+          },
+          {
+            "page": 9,
+            "raw_text": "2030.06.10."
+          },
+          {
+            "page": 9,
+            "raw_text": "2030.10.10."
+          },
+          {
+            "page": 9,
+            "raw_text": "2031.05.12."
+          }
+        ]
+      },
+      "balance_due_text": {
+        "value": "입주지정일",
+        "verification": "VERIFIED_NORMALIZED",
+        "evidence": [
+          {
+            "page": 9,
+            "raw_text": "입주지정일"
+          }
+        ]
+      },
+      "move_in_month": {
+        "value": "2032-02",
+        "verification": "VERIFIED_NORMALIZED",
+        "evidence": [
+          {
+            "page": 7,
+            "raw_text": "입주시기 : 2032년 02월 예정"
+          }
+        ]
+      }
+    },
+    "interim_loan": {
+      "arrangement_status": {
+        "value": "PLANNED",
+        "verification": "VERIFIED_NORMALIZED",
+        "evidence": [
+          {
+            "page": 46,
+            "raw_text": "중도금 대출을 통해 중도금을 납입할 수 있으나"
+          }
+        ]
+      },
+      "arranged_ratio": {
+        "value": 0.6,
+        "verification": "VERIFIED_TEXT",
+        "evidence": [
+          {
+            "page": 47,
+            "raw_text": "전체 공급대금의 중도금 60% 범위 내에서 시행할 예정"
+          }
+        ]
+      },
+      "self_funding_ratio": {
+        "value": 0,
+        "verification": "VERIFIED_DERIVED",
+        "evidence": [
+          {
+            "page": 9,
+            "raw_text": "계약금(5%) 중도금(60%) 잔금(35%)"
+          },
+          {
+            "page": 47,
+            "raw_text": "전체 공급대금의 중도금 60% 범위 내에서 시행할 예정"
+          }
+        ]
+      },
+      "interest_type": {
+        "value": "DEFERRED_INTEREST",
+        "verification": "VERIFIED_NORMALIZED",
+        "evidence": [
+          {
+            "page": 47,
+            "raw_text": "중도금 이자후불제"
+          }
+        ]
+      },
+      "prepay_requirement_ratio": {
+        "value": 0.05,
+        "verification": "VERIFIED_TEXT",
+        "evidence": [
+          {
+            "page": 46,
+            "raw_text": "분양대금의 총 5% 완납 후"
+          }
+        ]
+      }
+    }
+  }
+}

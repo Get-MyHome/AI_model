@@ -21,25 +21,54 @@ from get_myhome_ai.models import (
 )
 
 RATIO_HEADER = re.compile(
-    r"(?P<down_text>계약금\s*\(\s*(?P<down>\d+(?:\.\d+)?)\s*%\s*\))"
+    r"(?P<down_text>계약\s*금\s*\(\s*(?P<down>\d+(?:\.\d+)?)\s*%\s*\))"
     r".{0,500}?"
-    r"(?P<interim_text>중도금\s*\(\s*(?P<interim>\d+(?:\.\d+)?)\s*%\s*\))"
+    r"(?P<interim_text>중도\s*금\s*\(\s*(?P<interim>\d+(?:\.\d+)?)\s*%\s*\))"
     r".{0,500}?"
-    r"(?P<balance_text>잔금\s*\(\s*(?P<balance>\d+(?:\.\d+)?)\s*%\s*\))",
+    r"(?P<balance_text>잔\s*금\s*\(\s*(?P<balance>\d+(?:\.\d+)?)\s*%\s*\))",
+    re.DOTALL,
+)
+INTERIM_FIRST_RATIO_HEADER = re.compile(
+    r"(?P<interim_text>중도\s*금\s*\(\s*(?P<interim>\d+(?:\.\d+)?)\s*%\s*\))"
+    r".{0,500}?"
+    r"(?P<down_text>계약\s*금\s*\(\s*(?P<down>\d+(?:\.\d+)?)\s*%\s*\))"
+    r".{0,500}?"
+    r"(?P<balance_text>잔\s*금\s*\(\s*(?P<balance>\d+(?:\.\d+)?)\s*%\s*\))",
     re.DOTALL,
 )
 PARTIAL_RATIO_HEADER = re.compile(
-    r"(?P<down_text>계약금\s*\(\s*(?P<down>\d+(?:\.\d+)?)\s*%\s*\))"
+    r"(?P<down_text>계약\s*금\s*\(\s*(?P<down>\d+(?:\.\d+)?)\s*%\s*\))"
     r".{0,500}?"
-    r"(?P<interim_text>중도금\s*\(\s*(?P<interim>\d+(?:\.\d+)?)\s*%\s*\))"
+    r"(?P<interim_text>중도\s*금\s*\(\s*(?P<interim>\d+(?:\.\d+)?)\s*%\s*\))"
     r".{0,500}?"
-    r"(?P<balance_text>잔금)",
+    r"(?P<balance_text>잔\s*금)",
     re.DOTALL,
 )
-INSTALLMENT_HEADER = re.compile(r"(\d+)\s*회\s*\(\s*(\d+(?:\.\d+)?)\s*%\s*\)")
-SIMPLE_INSTALLMENT_HEADER = re.compile(r"(?<!\d)(\d+)\s*회(?!\s*\()")
-DATE_TEXT = re.compile(r"(20\d{2})[.-]\s*(\d{1,2})[.-]\s*(\d{1,2})[.]?")
+REORDERED_RATIO_HEADER = re.compile(
+    r"계약\s*금"
+    r"(?:(?!\(\s*\d+(?:\.\d+)?\s*%\s*\)).){0,500}?"
+    r"(?P<interim_text>중도\s*금\s*\(\s*(?P<interim>\d+(?:\.\d+)?)\s*%\s*\))"
+    r".{0,300}?"
+    r"(?P<balance_text>잔\s*금\s*\(\s*(?P<balance>\d+(?:\.\d+)?)\s*%\s*\))"
+    r"(?:(?!\d+\s*(?:회|차)).){0,300}?"
+    r"(?P<down_text>\(\s*(?P<down>\d+(?:\.\d+)?)\s*%\s*\))",
+    re.DOTALL,
+)
+INSTALLMENT_HEADER = re.compile(r"(?<!\d)(\d+)\s*(?:회차|회|차)\s*\(\s*(\d+(?:\.\d+)?)\s*%\s*\)")
+SIMPLE_INSTALLMENT_HEADER = re.compile(r"(?<!\d)(\d+)\s*(?:회차|회|차)(?!\s*\()")
+DATE_TEXT = re.compile(r"(?<!\d)(20\d{2}|[2-9]\d)[.-]\s*(\d{1,2})[.-]\s*(\d{1,2})[.]?")
 MOVE_IN_MONTH = re.compile(r"입주시기\s*[:\N{FULLWIDTH COLON}]\s*(20\d{2})년\s*(\d{1,2})월")
+MAIN_PAYMENT_HEADING = re.compile(r"공급금액\s*(?:및\s*납부일정|표)")
+BALANCE_DUE_PERIOD = re.compile(
+    r"(?P<raw>입주지정기간의.{0,450}?만료일\s*또는"
+    r".{0,650}?세대출입.{0,250}?열쇠\s*수령일\s*중.{0,180}?선\s*도래일)",
+    re.DOTALL,
+)
+BALANCE_DUE_EARLIER = re.compile(
+    r"(?P<raw>입주지정기간.{0,500}?만료일.{0,400}?또는"
+    r".{0,1000}?실입주일\s*중.{0,250}?빠른\s*날)",
+    re.DOTALL,
+)
 LOAN_SPLIT = re.compile(
     r"(?P<raw>"
     r"총\s*(?:공급|분양)\s*대금의\s*(?P<interim>\d+(?:\.\d+)?)\s*%\s*중"
@@ -55,17 +84,96 @@ LOAN_RATIO_ONLY = re.compile(
     r"(?P<raw>대출은\s*중도금\s*\(\s*총\s*(?:공급|분양)\s*대금의\s*"
     r"(?P<arranged>\d+(?:\.\d+)?)\s*%\s*\)\s*범위\s*내에서\s*가능)"
 )
+LOAN_RATIO_PARAGRAPH = re.compile(
+    r"(?P<raw>"
+    r"(?:중도금\s*(?:대출|융자)|(?:대출|융자).{0,40}?중도금)"
+    r".{0,180}?"
+    r"(?:전체|총)?\s*(?:공급|분양)\s*(?:대금|금액)(?:의|에)?\s*(?:중도금\s*)?"
+    r"(?P<arranged>\d+(?:\.\d+)?)\s*%\s*범위(?:\s*\([^)]*\))?\s*내"
+    r".{0,100}?(?:시행|알선|가능|예정)"
+    r")",
+    re.DOTALL,
+)
+LOAN_RATIO_BEFORE_ARRANGEMENT = re.compile(
+    r"(?P<raw>"
+    r"(?:전체|총)\s*(?:공급|분양)\s*금액\s*중\s*"
+    r"(?P<arranged>\d+(?:\.\d+)?)\s*%\s*이내\s*중도금에\s*대하여"
+    r".{0,180}?(?:사업주체|시행위탁자|시행사).{0,80}?알선한\s*금융기관"
+    r")",
+    re.DOTALL,
+)
+LOAN_RATIO_FULL_INSTALLMENTS = re.compile(
+    r"(?P<raw>중도금\s*\([^)]*\)\s*\(\s*(?:공급|분양)대금의\s*"
+    r"(?P<arranged>\d+(?:\.\d+)?)\s*%\s*\)\s*은\s*중도금\s*대출금으로\s*납부)",
+    re.DOTALL,
+)
+LOAN_RATIO_INTEREST_ARRANGEMENT = re.compile(
+    r"(?P<raw>(?:공급|분양)\s*대금의\s*"
+    r"(?P<arranged>\d+(?:\.\d+)?)\s*%\s*이내에서"
+    r".{0,120}?이자후불제\s*조건으로\s*중도금\s*대출(?:을|를)?\s*알선)",
+    re.DOTALL,
+)
 PREPAY = re.compile(r"(?P<raw>분양대금의\s*총\s*(?P<ratio>\d+(?:\.\d+)?)\s*%\s*완납\s*후)")
+PREPAY_PAID = re.compile(
+    r"(?P<raw>(?:공급|분양)대금의\s*(?P<ratio>\d+(?:\.\d+)?)\s*%"
+    r"(?:\s*\([^)]*\))?\s*(?:납입|완납)\s*시"
+    r".{0,80}?중도금\s*대출(?:을|\s))",
+    re.DOTALL,
+)
+PREPAY_CONTRACT_RATIO = re.compile(
+    r"(?P<raw>계약금\s*\(\s*(?:공급|분양)(?:대금|가액)의\s*"
+    r"(?P<ratio>\d+(?:\.\d+)?)\s*%\s*\)\s*완납"
+    r"(?:\s*및.{0,80}?)?\s*이?후"
+    r".{0,100}?중도금\s*대출)",
+    re.DOTALL,
+)
+PREPAY_SIMPLE_CONTRACT_RATIO = re.compile(
+    r"(?P<raw>계약금\s*(?P<ratio>\d+(?:\.\d+)?)\s*%\s*완납\s*이?후"
+    r".{0,100}?중도금\s*대출)",
+    re.DOTALL,
+)
+PREPAY_TOTAL_PAID = re.compile(
+    r"(?P<raw>대출(?:은행|취급기관).{0,80}?협약.{0,120}?"
+    r"(?:공급|분양)대금의\s*(?P<ratio>\d+(?:\.\d+)?)\s*%\s*이상"
+    r"\s*납부\s*(?:이\s*)?후\s*(?:중도금\s*)?대출이?\s*가능)",
+    re.DOTALL,
+)
+PREPAY_CONTRACT_COMPLETION = re.compile(
+    r"(?P<raw>계약금.{0,100}?완납\s*(?:이\s*)?후.{0,160}?중도금\s*대출)",
+    re.DOTALL,
+)
 NOT_AVAILABLE = re.compile(r"(?P<raw>본\s*아파트는\s*중도금대출이?\s*불가하며)")
 DEFERRED_INTEREST = re.compile(
     r"(?P<raw>중도금\s*대출\s*이자는.{0,300}?대납.{0,300}?(?:정산|완납))",
     re.DOTALL,
 )
-INTEREST_LABEL = re.compile(r"(?P<raw>중도금\s*대출\s*[“\"']?이자후불제[”\"']?)")
+INTEREST_LABEL = re.compile(
+    r"(?P<raw>(?:대출\s*조건은\s*)?중도금(?:\s*대출)?(?:\s*조건)?(?:은|는)?"
+    r".{0,40}?[“\"']?이자\s*후불제[”\"']?)",
+    re.DOTALL,
+)
+INTEREST_LOAN_TERMS = re.compile(
+    r"(?P<raw>중도금\s*대출\s*조건은.{0,300}?이자\s*후불제)",
+    re.DOTALL,
+)
+INTEREST_BEFORE_LOAN = re.compile(
+    r"(?P<raw>이자후불제\s*조건으로.{0,80}?중도금\s*대출(?:을|를)?\s*알선)",
+    re.DOTALL,
+)
+INTEREST_FREE_LABEL = re.compile(r"(?P<raw>중도금(?:\s*대출)?\s*무이자)")
+INTEREST_SETTLEMENT = re.compile(
+    r"(?P<raw>(?:"
+    r"(?:사업주체가\s*)?대납한\s*중도금\s*대출이자"
+    r".{0,180}?(?:일시\s*)?(?:납부|정산|완납)"
+    r"|중도금\s*대출.{0,220}?대납이자"
+    r".{0,180}?(?:일시\s*)?(?:납부|정산|완납)"
+    r"))",
+    re.DOTALL,
+)
 EXPLICIT_INCLUDED = re.compile(r"공급가에는?.{0,100}?발코니.{0,100}?포함", re.DOTALL)
 ARRANGEMENT_PLANNED = re.compile(
     r"(?P<raw>(?:"
-    r"(?:중도금.{0,120}?)?(?:대출|융자)\s*알선.{0,80}?(?:예정|가능)"
+    r"(?:중도금.{0,40}?)?(?:대출|융자)(?:을|를)?\s*알선.{0,80}?(?:예정|가능|할\s*수)"
     r"|(?:사업주체|시행위탁자|시행사).{0,80}?알선한.{0,50}?(?:대출취급기관|금융기관)"
     r"))",
     re.DOTALL,
@@ -122,6 +230,67 @@ def _sale_price_row(
     return None
 
 
+def _representative_installment_ratios(
+    document_text: str,
+    *,
+    installment_count: int,
+    expected_down_ratio: float | None,
+    expected_interim_ratio: float | None,
+    expected_balance_ratio: float | None,
+) -> tuple[str, list[float]] | None:
+    """Recover ratios only from a complete, arithmetically closed payment row.
+
+    Some announcement tables label the six interim columns as ``1회`` ...
+    ``6회`` without repeating ``(10%)``.  In that case we may derive the
+    ratios from a representative row, but only when one value in the row is a
+    sale-price candidate and every following payment adds back to that exact
+    value.  This avoids assuming that equal-looking columns are equal shares.
+    """
+
+    if (
+        installment_count < 1
+        or expected_down_ratio is None
+        or expected_interim_ratio is None
+        or expected_balance_ratio is None
+    ):
+        return None
+
+    candidates: list[tuple[str, list[float]]] = []
+    for line in document_text.splitlines():
+        values = _won_values(line)
+        for sale_index, sale_price_won in enumerate(values):
+            payment_values = values[sale_index + 1 :]
+            if sale_price_won <= 0 or len(payment_values) < installment_count + 2:
+                continue
+
+            contract_values = payment_values[: -(installment_count + 1)]
+            interim_values = payment_values[-(installment_count + 1) : -1]
+            balance_value = payment_values[-1]
+            if not contract_values or any(value <= 0 for value in payment_values):
+                continue
+            if sum(contract_values) + sum(interim_values) + balance_value != sale_price_won:
+                continue
+
+            ratios = [round(value / sale_price_won, 10) for value in interim_values]
+            if (
+                abs(sum(contract_values) / sale_price_won - expected_down_ratio) > 0.001
+                or abs(sum(ratios) - expected_interim_ratio) > 0.001
+                or abs(balance_value / sale_price_won - expected_balance_ratio) > 0.001
+            ):
+                continue
+            candidates.append((line.strip(), ratios))
+
+    if not candidates:
+        return None
+    first_ratios = candidates[0][1]
+    if any(
+        any(abs(left - right) > 0.001 for left, right in zip(first_ratios, ratios, strict=True))
+        for _, ratios in candidates[1:]
+    ):
+        return None
+    return candidates[0]
+
+
 def _ground_payment(
     draft: ExtractionDraft,
     pages: list[CandidatePage],
@@ -131,13 +300,50 @@ def _ground_payment(
     evidence: list[Evidence] = []
     schedule = draft.payment_schedule
 
+    # Model-proposed payment values are never retained on their own.  Rebuild
+    # the schedule only from deterministic source patterns below; otherwise a
+    # safe null/HOLD is preferable to an unsupported amount or date.
+    for component in (
+        schedule.down_payment,
+        schedule.interim_payment,
+        schedule.balance_payment,
+    ):
+        component.total_ratio = None
+        component.total_amount_manwon = None
+        component.basis = PaymentBasis.UNKNOWN
+        component.installments = []
+        component.due_date = None
+        component.due_month = None
+        component.due_text = None
+
     selections: list[tuple[int, CandidatePage, re.Match[str] | None]] = []
     for page in sorted(pages, key=lambda item: item.number):
-        match = RATIO_HEADER.search(page.text) or PARTIAL_RATIO_HEADER.search(page.text)
+        match = RATIO_HEADER.search(page.text)
+        if match is None and MAIN_PAYMENT_HEADING.search(page.text):
+            match = INTERIM_FIRST_RATIO_HEADER.search(page.text)
+        if match is None and MAIN_PAYMENT_HEADING.search(page.text):
+            match = REORDERED_RATIO_HEADER.search(page.text)
+        if match is None:
+            match = PARTIAL_RATIO_HEADER.search(page.text)
         if match:
             score = 0
             if _sale_price_row(page, sale_price_manwon) is not None:
                 score += 100
+            # A document can contain many option-payment tables with the same
+            # 계약금/중도금/잔금 labels.  Prefer the apartment's canonical
+            # supply/payment section over correction excerpts and paid-option
+            # schedules when no target sale price was provided.
+            main_heading = MAIN_PAYMENT_HEADING.search(page.text)
+            if (
+                main_heading is not None
+                and main_heading.start() <= match.start() <= main_heading.end() + 1_200
+            ):
+                score += 200
+            elif main_heading is not None:
+                # A contents/correction page can mention "공급금액 표" after
+                # an unrelated option schedule.  The heading alone is weak
+                # evidence unless it actually introduces this ratio table.
+                score += 20
             if "공급금액" in page.text:
                 score += 50
             if RATIO_HEADER.search(page.text):
@@ -185,12 +391,7 @@ def _ground_payment(
                         ),
                     )
             component.total_ratio = _ratio(ratio_text) if ratio_text is not None else None
-            component.total_amount_manwon = None
             component.basis = PaymentBasis.RATIO
-            component.installments = []
-            component.due_date = None
-            component.due_month = None
-            component.due_text = None
             if match is not None:
                 _append_evidence(
                     evidence,
@@ -202,10 +403,36 @@ def _ground_payment(
                 )
 
         section = page.text[match.start() : match.end() + 3_500] if match is not None else page.text
-        installment_headers = INSTALLMENT_HEADER.findall(section[:1_800])
-        simple_installment_numbers = [
-            int(value) for value in SIMPLE_INSTALLMENT_HEADER.findall(section[:1_000])
-        ]
+        all_installment_headers = INSTALLMENT_HEADER.findall(section[:1_800])
+        installment_header_candidates: list[list[tuple[str, str]]] = []
+        expected_ratio = schedule.interim_payment.total_ratio
+        if expected_ratio is not None:
+            for start, (number, _) in enumerate(all_installment_headers):
+                if int(number) != 1:
+                    continue
+                for end in range(start + 1, len(all_installment_headers) + 1):
+                    candidate = all_installment_headers[start:end]
+                    numbers = [int(item_number) for item_number, _ in candidate]
+                    ratios = [_ratio(value) for _, value in candidate]
+                    if numbers != list(range(1, len(numbers) + 1)):
+                        break
+                    if abs(sum(ratios) - expected_ratio) <= 0.001:
+                        installment_header_candidates.append(candidate)
+        installment_headers: list[tuple[str, str]] = []
+        if installment_header_candidates:
+            longest_length = max(len(candidate) for candidate in installment_header_candidates)
+            longest_candidates = [
+                candidate
+                for candidate in installment_header_candidates
+                if len(candidate) == longest_length
+            ]
+            ratio_vectors = {
+                tuple(_ratio(value) for _, value in candidate) for candidate in longest_candidates
+            }
+            if len(ratio_vectors) == 1:
+                installment_headers = longest_candidates[0]
+        simple_installment_matches = list(SIMPLE_INSTALLMENT_HEADER.finditer(section[:1_800]))
+        simple_installment_numbers = [int(item.group(1)) for item in simple_installment_matches]
         declared_installment_count = len(installment_headers) or (
             max(simple_installment_numbers) if simple_installment_numbers else 0
         )
@@ -213,7 +440,50 @@ def _ground_payment(
         # construction notices.  Keep only the first N dates following the
         # payment header.
         all_dates = list(DATE_TEXT.finditer(section))
-        dates = all_dates[:declared_installment_count] if declared_installment_count else []
+        date_offset = 0
+        if installment_headers and declared_installment_count:
+            first_ratio_header = INSTALLMENT_HEADER.search(section[:1_800])
+            contract_numbers = [
+                int(item.group(1))
+                for item in simple_installment_matches
+                if first_ratio_header is not None and item.start() < first_ratio_header.start()
+            ]
+            contract_dated_limit = max(contract_numbers, default=1) - 1
+            # Skip only surplus dates.  This distinguishes a dated second
+            # contract installment from text such as "계약 후 30일 이내".
+            date_offset = min(
+                max(0, len(all_dates) - declared_installment_count),
+                max(0, contract_dated_limit),
+            )
+        dates = (
+            all_dates[date_offset : date_offset + declared_installment_count]
+            if declared_installment_count
+            else []
+        )
+        representative_row = None
+        if (
+            not installment_headers
+            and sale_price_manwon is None
+            and len(dates) >= declared_installment_count > 0
+        ):
+            expected_balance_ratio = schedule.balance_payment.total_ratio
+            if (
+                expected_balance_ratio is None
+                and schedule.down_payment.total_ratio is not None
+                and schedule.interim_payment.total_ratio is not None
+            ):
+                expected_balance_ratio = round(
+                    1 - schedule.down_payment.total_ratio - schedule.interim_payment.total_ratio,
+                    10,
+                )
+            representative_row = _representative_installment_ratios(
+                page.text,
+                installment_count=declared_installment_count,
+                expected_down_ratio=schedule.down_payment.total_ratio,
+                expected_interim_ratio=schedule.interim_payment.total_ratio,
+                expected_balance_ratio=expected_balance_ratio,
+            )
+        representative_ratios = representative_row[1] if representative_row else []
         row = _sale_price_row(page, sale_price_manwon)
         row_text: str | None = None
         row_values: list[int] = []
@@ -283,14 +553,18 @@ def _ground_payment(
                                 and sale_price_manwon
                                 and schedule.interim_payment.total_ratio is not None
                             )
-                            else None
+                            else (representative_ratios[index] if representative_ratios else None)
                         )
                     ),
                     amount_manwon=(
                         interim_amounts_manwon[index] if interim_amounts_manwon else None
                     ),
                     due_date=date(
-                        int(dates[index].group(1)),
+                        (
+                            int(dates[index].group(1))
+                            if len(dates[index].group(1)) == 4
+                            else 2000 + int(dates[index].group(1))
+                        ),
                         int(dates[index].group(2)),
                         int(dates[index].group(3)),
                     ),
@@ -310,6 +584,15 @@ def _ground_payment(
                     raw_text=raw_dates,
                 ),
             )
+            if representative_row:
+                _append_evidence(
+                    evidence,
+                    Evidence(
+                        field="/payment_schedule/interim_payment/installments",
+                        page=page.number,
+                        raw_text=representative_row[0],
+                    ),
+                )
 
         contract_due = re.search(r"(\d+)\s*일\s*이내", section)
         if contract_due:
@@ -322,7 +605,66 @@ def _ground_payment(
                     raw_text=contract_due.group(0),
                 ),
             )
-        if "입주지정일" in section:
+        exact_balance_period = BALANCE_DUE_PERIOD.search(section)
+        earlier_balance_period = BALANCE_DUE_EARLIER.search(section)
+        # `입주시기` is a move-in-month heading, not a balance due rule.
+        # Accept the compact table form `입주시` while excluding that heading.
+        balance_at_move_in = re.search(r"입주\s*시(?!기)", section[:1_800])
+        balance_at_move_in_day = re.search(r"(?<!실)입주일", section[:1_800])
+        balance_period = re.search(r"(?:입주)?지정기간", section)
+        if exact_balance_period:
+            schedule.balance_payment.due_text = (
+                "입주지정기간의 만료일 또는 세대출입 열쇠 수령일 중 선 도래일"
+            )
+            _append_evidence(
+                evidence,
+                Evidence(
+                    field="/payment_schedule/balance_payment/due_text",
+                    page=page.number,
+                    raw_text=exact_balance_period.group("raw"),
+                ),
+            )
+        elif earlier_balance_period:
+            schedule.balance_payment.due_text = "입주지정기간 만료일 또는 실입주일 중 빠른 날"
+            _append_evidence(
+                evidence,
+                Evidence(
+                    field="/payment_schedule/balance_payment/due_text",
+                    page=page.number,
+                    raw_text=earlier_balance_period.group("raw"),
+                ),
+            )
+        elif balance_at_move_in:
+            schedule.balance_payment.due_text = "입주 시"
+            _append_evidence(
+                evidence,
+                Evidence(
+                    field="/payment_schedule/balance_payment/due_text",
+                    page=page.number,
+                    raw_text=balance_at_move_in.group(0),
+                ),
+            )
+        elif balance_at_move_in_day:
+            schedule.balance_payment.due_text = "입주일"
+            _append_evidence(
+                evidence,
+                Evidence(
+                    field="/payment_schedule/balance_payment/due_text",
+                    page=page.number,
+                    raw_text=balance_at_move_in_day.group(0),
+                ),
+            )
+        elif balance_period:
+            schedule.balance_payment.due_text = "입주지정기간"
+            _append_evidence(
+                evidence,
+                Evidence(
+                    field="/payment_schedule/balance_payment/due_text",
+                    page=page.number,
+                    raw_text=balance_period.group(0),
+                ),
+            )
+        elif "입주지정일" in section:
             schedule.balance_payment.due_text = "입주지정일"
             _append_evidence(
                 evidence,
@@ -367,7 +709,10 @@ def _verified_bank_names(draft: ExtractionDraft) -> list[str]:
     for item in draft.evidence:
         if item.field != "/interim_loan/bank_names":
             continue
-        if not any(term in item.raw_text for term in ("중도금", "대출", "금융기관")):
+        if not any(
+            term in item.raw_text
+            for term in ("중도금 대출", "대출취급기관", "대출 금융기관", "대출은행")
+        ):
             continue
         if all(name in item.raw_text for name in draft.interim_loan.bank_names):
             return draft.interim_loan.bank_names
@@ -381,18 +726,29 @@ def _ground_loan(draft: ExtractionDraft, pages: list[CandidatePage]) -> list[Evi
 
     unavailable = _find(pages, NOT_AVAILABLE)
     split = _find(pages, LOAN_SPLIT)
-    ratio_only = _find(pages, LOAN_RATIO_ONLY)
+    ratio_only = (
+        _find(pages, LOAN_RATIO_ONLY)
+        or _find(pages, LOAN_RATIO_PARAGRAPH)
+        or _find(pages, LOAN_RATIO_BEFORE_ARRANGEMENT)
+        or _find(pages, LOAN_RATIO_FULL_INSTALLMENTS)
+        or _find(pages, LOAN_RATIO_INTEREST_ARRANGEMENT)
+    )
     discussion = _find(pages, ARRANGEMENT_DISCUSSION)
     planned = _find(pages, ARRANGEMENT_PLANNED)
     verified_banks = _verified_bank_names(draft)
+    # Source-lock every quantitative loan field.  Values proposed by the model
+    # are not retained unless one of the deterministic document patterns below
+    # proves them.
+    loan.arranged_ratio = None
+    loan.arranged_amount_manwon = None
+    loan.self_funding_ratio = None
+    loan.self_funding_amount_manwon = None
+    loan.self_funding_origin = None
+    loan.prepay_requirement_ratio = None
+    loan.bank_names = verified_banks
     if unavailable:
         page_number, match = unavailable
         loan.arrangement_status = LoanArrangementStatus.NOT_AVAILABLE
-        loan.arranged_ratio = None
-        loan.arranged_amount_manwon = None
-        loan.self_funding_ratio = None
-        loan.self_funding_amount_manwon = None
-        loan.self_funding_origin = None
         loan.bank_names = []
         loan.interest_type = InterestType.NOT_APPLICABLE
         loan.interest_note = None
@@ -416,11 +772,8 @@ def _ground_loan(draft: ExtractionDraft, pages: list[CandidatePage]) -> list[Evi
         else:
             loan.arrangement_status = LoanArrangementStatus.NOT_STATED
         loan.arranged_ratio = _ratio(match.group("arranged"))
-        loan.arranged_amount_manwon = None
         loan.self_funding_ratio = _ratio(match.group("self"))
-        loan.self_funding_amount_manwon = None
         loan.self_funding_origin = ValueOrigin.EXTRACTED
-        loan.bank_names = verified_banks
         _append_evidence(
             evidence,
             Evidence(
@@ -448,11 +801,6 @@ def _ground_loan(draft: ExtractionDraft, pages: list[CandidatePage]) -> list[Evi
         else:
             loan.arrangement_status = LoanArrangementStatus.NOT_STATED
         loan.arranged_ratio = _ratio(match.group("arranged"))
-        loan.arranged_amount_manwon = None
-        loan.self_funding_ratio = None
-        loan.self_funding_amount_manwon = None
-        loan.self_funding_origin = None
-        loan.bank_names = verified_banks
         _append_evidence(
             evidence,
             Evidence(
@@ -461,6 +809,16 @@ def _ground_loan(draft: ExtractionDraft, pages: list[CandidatePage]) -> list[Evi
                 raw_text=match.group("raw"),
             ),
         )
+
+    if not unavailable:
+        if discussion:
+            loan.arrangement_status = LoanArrangementStatus.UNDER_DISCUSSION
+        elif verified_banks:
+            loan.arrangement_status = LoanArrangementStatus.BANK_SELECTED
+        elif planned:
+            loan.arrangement_status = LoanArrangementStatus.PLANNED
+        else:
+            loan.arrangement_status = LoanArrangementStatus.NOT_STATED
 
     status_evidence = discussion or planned
     if status_evidence and not unavailable:
@@ -477,6 +835,7 @@ def _ground_loan(draft: ExtractionDraft, pages: list[CandidatePage]) -> list[Evi
         bank_evidence = next(
             item for item in draft.evidence if item.field == "/interim_loan/bank_names"
         )
+        _append_evidence(evidence, bank_evidence)
         _append_evidence(
             evidence,
             Evidence(
@@ -486,7 +845,13 @@ def _ground_loan(draft: ExtractionDraft, pages: list[CandidatePage]) -> list[Evi
             ),
         )
 
-    prepay = _find(pages, PREPAY)
+    prepay = (
+        _find(pages, PREPAY)
+        or _find(pages, PREPAY_PAID)
+        or _find(pages, PREPAY_CONTRACT_RATIO)
+        or _find(pages, PREPAY_SIMPLE_CONTRACT_RATIO)
+        or _find(pages, PREPAY_TOTAL_PAID)
+    )
     if prepay and not unavailable:
         page_number, match = prepay
         loan.prepay_requirement_ratio = _ratio(match.group("ratio"))
@@ -498,10 +863,55 @@ def _ground_loan(draft: ExtractionDraft, pages: list[CandidatePage]) -> list[Evi
                 raw_text=match.group("raw"),
             ),
         )
+    elif not unavailable:
+        contract_completion = _find(pages, PREPAY_CONTRACT_COMPLETION)
+        down_ratio = draft.payment_schedule.down_payment.total_ratio
+        if contract_completion and down_ratio is not None:
+            page_number, match = contract_completion
+            loan.prepay_requirement_ratio = down_ratio
+            _append_evidence(
+                evidence,
+                Evidence(
+                    field="/interim_loan/prepay_requirement_ratio",
+                    page=page_number,
+                    raw_text=match.group("raw"),
+                ),
+            )
 
-    interest = _find(pages, INTEREST_LABEL) or _find(pages, DEFERRED_INTEREST)
-    if interest and not unavailable:
-        page_number, match = interest
+    free_interest = _find(pages, INTEREST_FREE_LABEL)
+    deferred_interest = (
+        _find(pages, INTEREST_LABEL)
+        or _find(pages, INTEREST_LOAN_TERMS)
+        or _find(pages, INTEREST_BEFORE_LOAN)
+        or _find(pages, INTEREST_SETTLEMENT)
+    )
+    loan.interest_type = InterestType.UNKNOWN
+    loan.interest_note = None
+    if free_interest and deferred_interest and not unavailable:
+        # Conflicting promotional and settlement clauses must not be collapsed
+        # into "free".  The repayment clause proves deferred interest, while
+        # validate_draft independently emits a source-conflict HOLD.
+        page_number, match = deferred_interest
+        loan.interest_type = InterestType.DEFERRED_INTEREST
+        loan.interest_note = _normalized(match.group("raw"))[:500]
+        for field in ("/interim_loan/interest_type", "/interim_loan/interest_note"):
+            _append_evidence(
+                evidence,
+                Evidence(field=field, page=page_number, raw_text=match.group("raw")),
+            )
+    elif free_interest and not unavailable:
+        page_number, match = free_interest
+        loan.interest_type = InterestType.INTEREST_FREE
+        _append_evidence(
+            evidence,
+            Evidence(
+                field="/interim_loan/interest_type",
+                page=page_number,
+                raw_text=match.group("raw"),
+            ),
+        )
+    elif deferred_interest and not unavailable:
+        page_number, match = deferred_interest
         loan.interest_type = InterestType.DEFERRED_INTEREST
         loan.interest_note = _normalized(match.group("raw"))[:500]
         _append_evidence(
@@ -813,7 +1223,6 @@ def _valid_model_evidence(items: list[Evidence], pages: list[CandidatePage]) -> 
             in {
                 "/interim_loan/interest_type",
                 "/interim_loan/interest_note",
-                "/interim_loan/bank_names",
             }
             and item.page in page_text
             and _normalized(item.raw_text) in page_text[item.page]

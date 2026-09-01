@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from collections.abc import Iterable
+from datetime import date
 from importlib.resources import files
 from typing import Annotated, TypeVar, cast
 
@@ -25,6 +27,8 @@ from get_myhome_ai.models import (
 from get_myhome_ai.providers.ollama_grounding import ground_ollama_draft
 from get_myhome_ai.settings import Settings
 
+logger = logging.getLogger(__name__)
+
 
 class _PaymentExtraction(StrictModel):
     payment_schedule: PaymentSchedule
@@ -39,13 +43,13 @@ class _LoanExtraction(StrictModel):
 
 class _FocusedCost(StrictModel):
     type: AdditionalCostType
-    name: str
+    name: Annotated[str, Field(min_length=1, max_length=100)]
     total_amount_manwon: int | None
     required: bool | None
     included_in_sale_price: bool | None
-    applicable_unit_type: str | None
+    applicable_unit_type: Annotated[str | None, Field(max_length=100)]
     payments: Annotated[list[AdditionalCostPayment], Field(max_length=6)]
-    note: str | None
+    note: Annotated[str | None, Field(max_length=500)]
     evidence_page: Annotated[int, Field(ge=1)]
     evidence_raw_text: Annotated[str, Field(min_length=1, max_length=300)]
 
@@ -72,6 +76,23 @@ MONTH_PATTERN = re.compile(r"^(\d{4})[-년.\s]+(0?[1-9]|1[0-2])(?:월)?$")
 DATE_PATTERN = re.compile(
     r"^(\d{4})[-년.\s]+(0?[1-9]|1[0-2])[-월.\s]+(0?[1-9]|[12]\d|3[01])(?:일)?\.?$"
 )
+
+
+def _load_json_object(content: str) -> dict[str, object]:
+    """Parse a structured response, tolerating only an outer prose/fence wrapper."""
+
+    stripped = content.strip()
+    try:
+        parsed = json.loads(stripped)
+    except json.JSONDecodeError:
+        start = stripped.find("{")
+        end = stripped.rfind("}")
+        if start < 0 or end <= start:
+            raise
+        parsed = json.loads(stripped[start : end + 1])
+    if not isinstance(parsed, dict):
+        raise ValueError("Ollama structured response must be a JSON object.")
+    return parsed
 
 
 def _merge_windows(windows: list[tuple[int, int]]) -> list[tuple[int, int]]:
@@ -240,11 +261,18 @@ def _normalize_date_fields(value: object) -> None:
     due_date = value.get("due_date")
     if isinstance(due_date, str):
         match = DATE_PATTERN.fullmatch(due_date.strip())
-        value["due_date"] = (
-            f"{int(match.group(1)):04d}-{int(match.group(2)):02d}-{int(match.group(3)):02d}"
-            if match
-            else None
-        )
+        if match:
+            try:
+                normalized = date(
+                    int(match.group(1)),
+                    int(match.group(2)),
+                    int(match.group(3)),
+                )
+            except ValueError:
+                normalized = None
+            value["due_date"] = normalized.isoformat() if normalized else None
+        else:
+            value["due_date"] = None
 
     for child in value.values():
         _normalize_date_fields(child)
@@ -342,26 +370,68 @@ class OllamaExtractor:
                 "num_ctx": self.settings.ollama_num_ctx,
                 "num_predict": min(
                     self.settings.ollama_num_predict,
-                    {"payment": 1_500, "loan": 1_600, "cost": 1_800}[task],
+                    {"payment": 2_500, "loan": 2_400, "cost": 2_400}[task],
                 ),
             },
             "keep_alive": self.settings.ollama_keep_alive,
         }
-        try:
-            response = await client.post("/api/chat", json=payload)
-            if response.status_code == 404:
-                raise ProviderNotConfiguredError(
-                    f"Ollama model이 없습니다: {self.model_name}. 먼저 모델을 pull하세요."
+        last_error: Exception | None = None
+        for attempt in range(self.settings.ollama_max_attempts):
+            content: str | None = None
+            if attempt:
+                payload["messages"][1]["content"] += (
+                    "\n\n이전 구조화 응답이 JSON Schema 검증을 통과하지 못했습니다. "
+                    "원문에 없는 값을 추가하지 말고 모든 필드와 enum을 정확히 맞춰 다시 반환하세요."
                 )
-            response.raise_for_status()
-            content = response.json()["message"]["content"]
-            parsed = json.loads(content)
-            _normalize_date_fields(parsed)
-            return result_type.model_validate(parsed)
-        except ProviderNotConfiguredError:
-            raise
-        except (httpx.HTTPError, KeyError, TypeError, ValueError, ValidationError) as exc:
-            raise ProviderError(f"Ollama {task} 구조화 추출에 실패했습니다.") from exc
+            try:
+                response = await client.post("/api/chat", json=payload)
+                if response.status_code == 404:
+                    raise ProviderNotConfiguredError(
+                        f"Ollama model이 없습니다: {self.model_name}. 먼저 모델을 pull하세요."
+                    )
+                response.raise_for_status()
+                content = response.json()["message"]["content"]
+                parsed = _load_json_object(content)
+                _normalize_date_fields(parsed)
+                return result_type.model_validate(parsed)
+            except ProviderNotConfiguredError:
+                raise
+            except (httpx.HTTPError, KeyError, TypeError, ValueError, ValidationError) as exc:
+                last_error = exc
+                if isinstance(exc, ValidationError):
+                    logger.warning(
+                        "Ollama %s schema validation failed on attempt %d: %s",
+                        task,
+                        attempt + 1,
+                        [
+                            {
+                                "loc": ".".join(str(part) for part in error["loc"]),
+                                "type": error["type"],
+                            }
+                            for error in exc.errors(include_input=False, include_url=False)
+                        ],
+                    )
+                else:
+                    json_detail = (
+                        f" msg={exc.msg} line={exc.lineno} column={exc.colno}"
+                        if isinstance(exc, json.JSONDecodeError)
+                        else ""
+                    )
+                    logger.warning(
+                        "Ollama %s extraction failed on attempt %d: %s%s%s",
+                        task,
+                        attempt + 1,
+                        type(exc).__name__,
+                        json_detail,
+                        (
+                            " "
+                            f"chars={len(content)} "
+                            f"object_bounds={content.find('{') >= 0 and content.rfind('}') > 0}"
+                            if isinstance(content, str)
+                            else ""
+                        ),
+                    )
+        raise ProviderError(f"Ollama {task} 구조화 추출에 실패했습니다.") from last_error
 
     async def extract(
         self,
@@ -382,6 +452,9 @@ class OllamaExtractor:
         results: dict[str, StrictModel] = {}
         async with self._client() as client:
             for task, categories, result_type in TASKS:
+                if task == "cost" and unit_type_name is None:
+                    results[task] = _CostExtraction(findings=[])
+                    continue
                 document = _task_document(
                     pages,
                     categories=categories,

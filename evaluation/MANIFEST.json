@@ -1,0 +1,33 @@
+{
+  "schema_version": "core_reference_manifest_v0.1",
+  "document_count": 24,
+  "reference_ids": [
+    "2026000282",
+    "2026000291",
+    "2026000293",
+    "2026000295",
+    "2026000312",
+    "2026000315",
+    "2026000316",
+    "2026000318",
+    "2026000323",
+    "2026000327",
+    "2026000331",
+    "2026000342",
+    "2026000354",
+    "2026000355",
+    "2026000356",
+    "2026000364",
+    "2026000365",
+    "2026000367",
+    "2026000368",
+    "2026000371",
+    "2026000374",
+    "2026000377",
+    "2026000382",
+    "2026000383"
+  ],
+  "existing_full_golden_ids": ["2026000358", "2026000372", "2026000376"],
+  "metric_scope": "document-level payment schedule and interim-loan core fields",
+  "claim_limit": "Do not report 27-document full-field accuracy until PDF visual review and unit-specific labels are complete."
+}

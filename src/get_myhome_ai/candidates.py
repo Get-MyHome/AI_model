@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from get_myhome_ai.pdf_text import PdfPage
@@ -25,8 +26,10 @@ CATEGORY_TERMS: dict[str, tuple[str, ...]] = {
         "시스템에어컨",
         "추가 비용",
     ),
-    "balance": ("입주지정일", "입주예정", "잔금 납부", "입주 지정"),
+    "balance": ("입주지정일", "입주예정", "입주시기", "잔금 납부", "입주 지정"),
 }
+
+MOVE_IN_MONTH_ANCHOR = re.compile(r"입주시기\s*[:\uFF1A]\s*20\d{2}년\s*\d{1,2}월")
 
 
 @dataclass(frozen=True)
@@ -91,6 +94,17 @@ def select_candidate_pages(
         return []
 
     selected_numbers: set[int] = set()
+    # A dated move-in heading can appear on a low-keyword overview page while
+    # high-frequency boilerplate fills the normal category quota.  Reserve the
+    # first exact heading before scoring; generic "move-in schedule may change"
+    # prose intentionally does not qualify.
+    move_in_anchor = next(
+        (page for page in direct if MOVE_IN_MONTH_ANCHOR.search(page.text)),
+        None,
+    )
+    if move_in_anchor is not None and max_pages > 0:
+        selected_numbers.add(move_in_anchor.number)
+
     for category in CATEGORY_TERMS:
         category_pages = sorted(
             (page for page in direct if category in page.categories),

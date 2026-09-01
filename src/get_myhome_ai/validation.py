@@ -16,6 +16,16 @@ from get_myhome_ai.models import (
 from get_myhome_ai.pdf_text import PdfPage
 
 TOLERANCE = 0.001
+INTEREST_FREE_SOURCE = re.compile(r"중도금(?:\s*대출)?\s*무이자")
+INTEREST_SETTLEMENT_SOURCE = re.compile(
+    r"(?:"
+    r"(?:사업주체가\s*)?대납한\s*중도금\s*대출이자"
+    r".{0,180}?(?:일시\s*)?(?:납부|정산|완납)"
+    r"|중도금\s*대출.{0,220}?대납이자"
+    r".{0,180}?(?:일시\s*)?(?:납부|정산|완납)"
+    r")",
+    re.DOTALL,
+)
 
 
 def _issue(
@@ -315,6 +325,16 @@ def validate_draft(
             )
 
     loan = draft.interim_loan
+    source_text = "\n".join(page.text for page in pages)
+    if INTEREST_FREE_SOURCE.search(source_text) and INTEREST_SETTLEMENT_SOURCE.search(source_text):
+        issues.append(
+            _issue(
+                IssueSeverity.WARNING,
+                "INTEREST_TERMS_CONFLICT",
+                "무이자 표시와 입주 시 대납이자 납부 조건이 함께 확인됩니다.",
+                "/interim_loan/interest_type",
+            )
+        )
     interim_ratio = schedule.interim_payment.total_ratio
     if (
         loan.arranged_ratio is not None

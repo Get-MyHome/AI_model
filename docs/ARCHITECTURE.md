@@ -30,9 +30,10 @@ Get-MyHome 전체 제품은 청약 당첨 이후 입주까지의 자금 단절�
 7. 검증값으로만 HOLD와 고정 요약문을 만든다.
 8. `AUTO_EXTRACTED` 결과와 검수표를 저장한다.
 9. 사람이 PDF 원문과 대조해 승인·수정한 뒤 `REVIEWED` 결과를 별도 저장한다.
-10. backend에는 `REVIEWED` 결과만 전달한다.
+10. API는 fresh PDF의 SHA-256과 공고·주택형·분양가가 모두 같은 `REVIEWED` 결과를 모델 호출 전에 찾아 반환한다.
+11. exact 검수본이 없으면 `AUTO_EXTRACTED`를 반환하고 backend는 사용자 계산을 HOLD한다.
 
-사전 분석·저장 키는 `(complex_id, unit_type_id, sale_price_manwon)`입니다. backend의
+사전 분석·저장 키는 `(source_sha256, complex_id, unit_type_id, sale_price_manwon)`입니다. backend의
 각 주택형 최고가를 기준으로 보수적으로 분석하며, 사용자 요청 시 모델을 다시 호출하지
 않고 동일 키의 검수본을 읽습니다. 동·층별 정확가격을 받기 전까지는 최종 화면에
 "주택형 최고가 기준"을 표시합니다.

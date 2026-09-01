@@ -23,9 +23,14 @@ class Settings(BaseSettings):
 
     ai_provider: Literal["ollama", "openai", "fixture"] = "ollama"
     ollama_base_url: str = "http://127.0.0.1:11434"
-    ollama_model: str = "qwen3:8b"
+    ollama_model: str = "qwen3.5:9b"
     ollama_timeout_seconds: float = Field(default=180.0, gt=0)
-    ollama_num_ctx: int = Field(default=8192, ge=2048)
+    ollama_max_attempts: int = Field(default=3, ge=1, le=3)
+    # The extraction schema, Korean source text, and bounded JSON answer can
+    # exceed 8K tokens on dense payment tables. 12K still fully offloads the
+    # default Qwen3 8B model on the project's 8GB GPU while avoiding Ollama's
+    # silent context shifting observed at 8K.
+    ollama_num_ctx: int = Field(default=12288, ge=2048)
     ollama_num_predict: int = Field(default=4096, ge=256)
     ollama_chunk_max_chars: int = Field(default=10_000, ge=2_000)
     ollama_keep_alive: str = "10m"

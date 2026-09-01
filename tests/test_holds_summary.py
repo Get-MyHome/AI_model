@@ -52,6 +52,16 @@ def test_unreadable_text_adds_explicit_hold(golden_cases) -> None:
     assert HoldReasonCode.PDF_TEXT_UNAVAILABLE in {hold.reason_code for hold in holds}
 
 
+def test_derived_uncovered_ratio_is_not_described_as_cash_only(golden_cases) -> None:
+    case = golden_cases["2026000372"]
+    draft, _ = normalize_draft(case.expected)
+
+    summary = build_analysis_summary(draft)
+
+    assert "사업장 알선 대출로 충당되지 않아 별도 조달이 필요" in summary
+    assert "20%는 직접 납부" not in summary
+
+
 def test_individual_review_hold_is_non_blocking(golden_cases) -> None:
     case = golden_cases["2026000358"]
     draft, derived = normalize_draft(case.expected)

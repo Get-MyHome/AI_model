@@ -14,3 +14,15 @@ def test_selects_distant_categories_and_respects_limits() -> None:
     assert {5, 30, 38} <= numbers
     assert len(selected) <= 9
     assert sum(len(page.text) for page in selected) <= 10_000
+
+
+def test_exact_move_in_month_heading_is_reserved_before_high_frequency_boilerplate() -> None:
+    pages = [
+        PdfPage(number=index, text=f"입주지정일 잔금 납부 입주예정 {index} " * 20)
+        for index in range(1, 12)
+    ]
+    pages[4] = PdfPage(number=5, text="■ 입주시기 : 2029년 08월 예정")
+
+    selected = select_candidate_pages(pages, max_pages=4, max_chars=20_000)
+
+    assert 5 in {page.number for page in selected}

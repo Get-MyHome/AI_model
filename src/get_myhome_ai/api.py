@@ -29,6 +29,7 @@ from get_myhome_ai.models import (
 from get_myhome_ai.pipeline import AnalysisPipeline
 from get_myhome_ai.providers.base import ExtractorProvider
 from get_myhome_ai.providers.factory import create_provider
+from get_myhome_ai.reviewed_store import find_reviewed_artifact
 from get_myhome_ai.settings import Settings, get_settings
 
 
@@ -128,6 +129,16 @@ def create_app(
             raise AuthenticationError("유효한 API 인증 정보가 필요합니다.")
 
     async def run_analysis(payload: AnalyzeRequest) -> AnalysisResponse:
+        downloaded = await active_pipeline.download_url(payload)
+        reviewed = find_reviewed_artifact(
+            request=payload,
+            source_sha256=downloaded.sha256,
+            reviewed_artifact_dir=active_settings.reviewed_artifact_dir,
+            schema_version=active_settings.schema_version,
+        )
+        if reviewed is not None:
+            return reviewed
+
         try:
             async with asyncio.timeout(active_settings.analysis_queue_timeout_seconds):
                 await semaphore.acquire()
@@ -138,7 +149,7 @@ def create_app(
         try:
             try:
                 async with asyncio.timeout(active_settings.analysis_timeout_seconds):
-                    return await active_pipeline.analyze_url(payload)
+                    return await active_pipeline.analyze_downloaded(payload, downloaded)
             except TimeoutError as exc:
                 raise AnalysisTimeoutError("PDF AI 분석 시간이 초과됐습니다.") from exc
         finally:

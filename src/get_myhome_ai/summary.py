@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from get_myhome_ai.models import ExtractionDraft, LoanArrangementStatus, PaymentComponent
+from get_myhome_ai.models import (
+    ExtractionDraft,
+    LoanArrangementStatus,
+    PaymentComponent,
+    ValueOrigin,
+)
 
 
 def _ratio_text(value: float) -> str:
@@ -57,12 +62,21 @@ def build_analysis_summary(draft: ExtractionDraft) -> str:
         )
 
     if loan.self_funding_ratio is not None and loan.self_funding_ratio > 0:
+        ratio = _ratio_text(loan.self_funding_ratio)
         sentences.append(
-            f"중도금 중 분양가의 {_ratio_text(loan.self_funding_ratio)}는 직접 납부해야 합니다."
+            f"중도금 중 분양가의 {ratio}는 직접 납부해야 합니다."
+            if loan.self_funding_origin == ValueOrigin.EXTRACTED
+            else (
+                f"중도금 중 분양가의 {ratio}는 사업장 알선 대출로 충당되지 않아 "
+                "별도 조달이 필요합니다."
+            )
         )
     elif loan.self_funding_amount_manwon is not None and loan.self_funding_amount_manwon > 0:
+        amount = f"{loan.self_funding_amount_manwon:,}만 원"
         sentences.append(
-            f"중도금 중 {loan.self_funding_amount_manwon:,}만 원은 직접 납부해야 합니다."
+            f"중도금 중 {amount}은 직접 납부해야 합니다."
+            if loan.self_funding_origin == ValueOrigin.EXTRACTED
+            else (f"중도금 중 {amount}은 사업장 알선 대출로 충당되지 않아 별도 조달이 필요합니다.")
         )
 
     if (

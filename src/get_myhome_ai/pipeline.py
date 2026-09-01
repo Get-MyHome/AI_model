@@ -90,7 +90,17 @@ class AnalysisPipeline:
         self.page_extractor = page_extractor
 
     async def analyze_url(self, request: AnalyzeRequest) -> AnalysisResponse:
-        downloaded = await self.url_loader(str(request.pdf_url), self.settings)
+        downloaded = await self.download_url(request)
+        return await self.analyze_downloaded(request, downloaded)
+
+    async def download_url(self, request: AnalyzeRequest) -> DownloadedPdf:
+        return await self.url_loader(str(request.pdf_url), self.settings)
+
+    async def analyze_downloaded(
+        self,
+        request: AnalyzeRequest,
+        downloaded: DownloadedPdf,
+    ) -> AnalysisResponse:
         return await self._analyze(
             complex_id=request.complex_id,
             downloaded=downloaded,

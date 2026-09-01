@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from conftest import synthetic_pages
 
-from get_myhome_ai.models import Evidence
+from get_myhome_ai.holds import derive_holds
+from get_myhome_ai.models import Evidence, HoldReasonCode
 from get_myhome_ai.normalization import normalize_draft, normalize_unit_type_name
+from get_myhome_ai.pdf_text import PdfPage
 from get_myhome_ai.validation import validate_draft
 
 
@@ -151,3 +153,53 @@ def test_one_manwon_additional_cost_rounding_difference_is_allowed(golden_cases)
     )
 
     assert "ADDITIONAL_COST_PAYMENT_SUM_MISMATCH" not in _codes(report)
+
+
+def test_conflicting_free_label_and_interest_repayment_is_reported(golden_cases) -> None:
+    case = golden_cases["2026000358"]
+    draft, derived = normalize_draft(case.expected)
+    pages = [
+        *synthetic_pages(case),
+        PdfPage(
+            number=99,
+            text=(
+                "중도금 무이자 조건. "
+                "계약자는 입주시 사업주체가 대납한 중도금 대출이자를 일시 납부하여야 합니다."
+            ),
+        ),
+    ]
+
+    report = validate_draft(
+        draft,
+        pages=pages,
+        derived_fields=derived,
+        sale_price_manwon=case.sale_price_manwon,
+    )
+
+    assert "INTEREST_TERMS_CONFLICT" in _codes(report)
+    holds = derive_holds(draft, report, unit_type_name=case.unit_type_name)
+    assert HoldReasonCode.SOURCE_CONFLICT in {item.reason_code for item in holds}
+
+
+def test_post_move_interest_after_free_period_is_not_a_source_conflict(golden_cases) -> None:
+    case = golden_cases["2026000358"]
+    draft, derived = normalize_draft(case.expected)
+    pages = [
+        *synthetic_pages(case),
+        PdfPage(
+            number=99,
+            text=(
+                "중도금 무이자 조건이며 입주개시월까지 사업주체가 이자를 납부합니다. "
+                "그 이후 발생하는 대출이자는 계약자가 직접 납부합니다."
+            ),
+        ),
+    ]
+
+    report = validate_draft(
+        draft,
+        pages=pages,
+        derived_fields=derived,
+        sale_price_manwon=case.sale_price_manwon,
+    )
+
+    assert "INTEREST_TERMS_CONFLICT" not in _codes(report)
