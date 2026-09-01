@@ -11,4 +11,4 @@ htmlcov/
 dist/
 build/
 *.pdf
-
+artifacts/

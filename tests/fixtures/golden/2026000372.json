@@ -1,0 +1,85 @@
+{
+  "input": {
+    "complex_id": "2026000372",
+    "pdf_filename": "2026000372_7.pdf",
+    "unit_type_name": "59A",
+    "sale_price_manwon": 108650
+  },
+  "expected": {
+    "payment_schedule": {
+      "down_payment": {
+        "total_ratio": 0.10,
+        "total_amount_manwon": null,
+        "basis": "RATIO",
+        "installments": [],
+        "due_date": null,
+        "due_month": null,
+        "due_text": "계약 시 및 30일 이내"
+      },
+      "interim_payment": {
+        "total_ratio": 0.60,
+        "total_amount_manwon": null,
+        "basis": "RATIO",
+        "installments": [
+          {"number": 1, "ratio": 0.10, "amount_manwon": null, "due_date": "2027-04-13", "due_text": null},
+          {"number": 2, "ratio": 0.10, "amount_manwon": null, "due_date": "2027-10-13", "due_text": null},
+          {"number": 3, "ratio": 0.10, "amount_manwon": null, "due_date": "2028-04-13", "due_text": null},
+          {"number": 4, "ratio": 0.10, "amount_manwon": null, "due_date": "2029-01-13", "due_text": null},
+          {"number": 5, "ratio": 0.10, "amount_manwon": null, "due_date": "2029-04-13", "due_text": null},
+          {"number": 6, "ratio": 0.10, "amount_manwon": null, "due_date": "2029-07-13", "due_text": null}
+        ],
+        "due_date": null,
+        "due_month": null,
+        "due_text": null
+      },
+      "balance_payment": {
+        "total_ratio": null,
+        "total_amount_manwon": null,
+        "basis": "UNKNOWN",
+        "installments": [],
+        "due_date": null,
+        "due_month": "2030-01",
+        "due_text": "입주지정일"
+      }
+    },
+    "interim_loan": {
+      "arrangement_status": "PLANNED",
+      "arranged_ratio": 0.40,
+      "arranged_amount_manwon": null,
+      "self_funding_ratio": null,
+      "self_funding_amount_manwon": null,
+      "self_funding_origin": null,
+      "bank_names": [],
+      "guarantee_provider": null,
+      "interest_type": "DEFERRED_INTEREST",
+      "interest_note": "입주개시일 전일까지 사업주체 대납",
+      "prepay_requirement_ratio": 0.10
+    },
+    "additional_costs": [
+      {
+        "type": "BALCONY_EXTENSION",
+        "name": "발코니 확장비",
+        "total_amount_manwon": 1870,
+        "required": false,
+        "included_in_sale_price": false,
+        "applicable_unit_type": "59A",
+        "payments": [
+          {"number": 1, "stage": "CONTRACT", "amount_manwon": 187, "due_date": null, "due_text": "계약 시"},
+          {"number": 2, "stage": "BALANCE", "amount_manwon": 1683, "due_date": null, "due_text": "입주지정일"}
+        ],
+        "note": "59A 주택형 기준 선택비용"
+      }
+    ],
+    "evidence": [
+      {"field": "/payment_schedule/down_payment", "page": 6, "raw_text": "계약금(10%)"},
+      {"field": "/payment_schedule/interim_payment", "page": 6, "raw_text": "중도금(60%)"},
+      {"field": "/payment_schedule/balance_payment/due_text", "page": 6, "raw_text": "입주지정일"},
+      {"field": "/payment_schedule/interim_payment/installments", "page": 6, "raw_text": "2027.04.13.   2027.10.13.   2028.04.13.   2029.01.13.   2029.04.13.   2029.07.13."},
+      {"field": "/payment_schedule/balance_payment/due_month", "page": 5, "raw_text": "입주시기 : 2030년 01월 예정"},
+      {"field": "/interim_loan/arrangement_status", "page": 7, "raw_text": "사업주체가 알선한 대출취급기관의 중도금 대출"},
+      {"field": "/interim_loan", "page": 31, "raw_text": "본 사업은 중도금 대출 “이자후불제” 사업이며, 대출은 중도금 (총 분양 대금의 40%) 범위 내에서 가능합니다."},
+      {"field": "/additional_costs/0", "page": 33, "raw_text": "59A                18,700,000               1,870,000                16,830,000"}
+    ],
+    "exception_flags": ["LOAN_MEDIATION_NOT_GUARANTEED", "INDIVIDUAL_REVIEW_NOTED"]
+  }
+}

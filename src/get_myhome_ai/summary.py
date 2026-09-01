@@ -1,0 +1,56 @@
+from __future__ import annotations
+
+from get_myhome_ai.models import ExtractionDraft, LoanArrangementStatus, PaymentComponent
+
+
+def _ratio_text(value: float) -> str:
+    percent = value * 100
+    if percent.is_integer():
+        return f"{int(percent)}%"
+    return f"{percent:.1f}%"
+
+
+def _component_text(name: str, component: PaymentComponent) -> str:
+    if component.total_ratio is not None:
+        return f"{name}은 분양가의 {_ratio_text(component.total_ratio)}입니다."
+    if component.total_amount_manwon is not None:
+        return f"{name}은 {component.total_amount_manwon:,}만 원 정액입니다."
+    return f"{name} 조건은 공고문에서 확인하지 못했습니다."
+
+
+def build_analysis_summary(draft: ExtractionDraft) -> str:
+    schedule = draft.payment_schedule
+    sentences = [
+        _component_text("계약금", schedule.down_payment),
+        _component_text("중도금", schedule.interim_payment),
+        _component_text("잔금", schedule.balance_payment),
+    ]
+
+    loan = draft.interim_loan
+    if loan.arrangement_status == LoanArrangementStatus.NOT_AVAILABLE:
+        sentences.append("공고문에는 중도금 대출이 불가하다고 적혀 있습니다.")
+    elif loan.arranged_ratio is not None:
+        sentences.append(
+            f"공고문상 중도금 대출 가능 범위는 분양가의 {_ratio_text(loan.arranged_ratio)}입니다."
+        )
+    elif loan.arranged_amount_manwon is not None:
+        sentences.append(
+            f"공고문상 중도금 대출 가능 금액은 {loan.arranged_amount_manwon:,}만 원입니다."
+        )
+
+    if loan.self_funding_ratio is not None and loan.self_funding_ratio > 0:
+        sentences.append(
+            f"중도금 중 분양가의 {_ratio_text(loan.self_funding_ratio)}는 직접 납부해야 합니다."
+        )
+    elif loan.self_funding_amount_manwon is not None and loan.self_funding_amount_manwon > 0:
+        sentences.append(
+            f"중도금 중 {loan.self_funding_amount_manwon:,}만 원은 직접 납부해야 합니다."
+        )
+
+    if (
+        loan.arrangement_status
+        in {LoanArrangementStatus.PLANNED, LoanArrangementStatus.UNDER_DISCUSSION}
+        and not loan.bank_names
+    ):
+        sentences.append("취급은행은 공고문에 공개되지 않았습니다.")
+    return " ".join(sentences)
