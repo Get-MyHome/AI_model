@@ -8,6 +8,7 @@ __pycache__/
 htmlcov/
 .venv/
 .env
+.local/
 dist/
 build/
 *.pdf

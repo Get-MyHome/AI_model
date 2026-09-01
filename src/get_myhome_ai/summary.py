@@ -30,9 +30,27 @@ def build_analysis_summary(draft: ExtractionDraft) -> str:
     if loan.arrangement_status == LoanArrangementStatus.NOT_AVAILABLE:
         sentences.append("공고문에는 중도금 대출이 불가하다고 적혀 있습니다.")
     elif loan.arranged_ratio is not None:
-        sentences.append(
-            f"공고문상 중도금 대출 가능 범위는 분양가의 {_ratio_text(loan.arranged_ratio)}입니다."
-        )
+        ratio = _ratio_text(loan.arranged_ratio)
+        if loan.arrangement_status == LoanArrangementStatus.PLANNED:
+            sentences.append(
+                f"공고문상 분양가의 {ratio} 범위에서 중도금 대출을 알선할 예정입니다. "
+                "실제 실행과 개인 승인은 확정되지 않았습니다."
+            )
+        elif loan.arrangement_status == LoanArrangementStatus.UNDER_DISCUSSION:
+            sentences.append(
+                f"공고문에는 분양가의 {ratio} 범위가 제시되어 있으나 금융기관과 협의 중이며 "
+                "실제 대출 조건은 확정되지 않았습니다."
+            )
+        elif loan.arrangement_status == LoanArrangementStatus.BANK_SELECTED:
+            sentences.append(
+                f"공고문상 중도금 대출 범위는 분양가의 {ratio}이며 취급은행은 확인됐습니다. "
+                "개인별 대출 승인은 별도 심사가 필요합니다."
+            )
+        else:
+            sentences.append(
+                f"공고문상 중도금 대출 관련 비율은 분양가의 {ratio}이지만 "
+                "실제 실행 여부는 확인이 필요합니다."
+            )
     elif loan.arranged_amount_manwon is not None:
         sentences.append(
             f"공고문상 중도금 대출 가능 금액은 {loan.arranged_amount_manwon:,}만 원입니다."

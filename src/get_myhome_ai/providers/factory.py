@@ -11,6 +11,11 @@ def create_provider(settings: Settings) -> ExtractorProvider:
         cases = load_golden_cases(settings.fixture_dir)
         return FixtureExtractor({key: case.expected for key, case in cases.items()})
 
+    if settings.ai_provider == "ollama":
+        from get_myhome_ai.providers.ollama import OllamaExtractor
+
+        return OllamaExtractor(settings)
+
     # Keep the OpenAI SDK out of keyless fixture-only runs.
     from get_myhome_ai.providers.openai import OpenAIExtractor
 

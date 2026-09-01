@@ -37,10 +37,7 @@ class PdfPage:
 
 def _host_is_allowed(host: str, allowed_hosts: set[str]) -> bool:
     normalized = host.rstrip(".").lower()
-    return any(
-        normalized == allowed.lstrip(".") or normalized.endswith(f".{allowed.lstrip('.')}")
-        for allowed in allowed_hosts
-    )
+    return normalized in {allowed.rstrip(".").lower() for allowed in allowed_hosts}
 
 
 def _is_public_ip(value: str) -> bool:
@@ -73,11 +70,20 @@ async def _validate_remote_url(url: str, settings: Settings) -> None:
     parsed = urlparse(url)
     if parsed.scheme != "https" or not parsed.hostname:
         raise InvalidPdfUrlError("PDF URL은 공개 HTTPS 주소여야 합니다.")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise InvalidPdfUrlError("PDF URL 포트가 올바르지 않습니다.") from exc
+    if parsed.username is not None or parsed.password is not None or port not in {None, 443}:
+        raise InvalidPdfUrlError("PDF URL은 사용자정보 없이 HTTPS 443 포트를 사용해야 합니다.")
 
-    if settings.allowed_pdf_hosts:
-        if not _host_is_allowed(parsed.hostname, settings.allowed_pdf_hosts):
-            raise InvalidPdfUrlError("허용되지 않은 PDF 호스트입니다.")
-        return
+    if not settings.allowed_pdf_hosts and not settings.allow_unrestricted_pdf_hosts_dev:
+        raise InvalidPdfUrlError("PDF_ALLOWED_HOSTS에 허용할 호스트를 설정해야 합니다.")
+    if settings.allowed_pdf_hosts and not _host_is_allowed(
+        parsed.hostname,
+        settings.allowed_pdf_hosts,
+    ):
+        raise InvalidPdfUrlError("허용되지 않은 PDF 호스트입니다.")
 
     if not await asyncio.to_thread(_resolve_public_host, parsed.hostname):
         raise InvalidPdfUrlError("사설망 또는 확인할 수 없는 PDF 호스트입니다.")
@@ -159,9 +165,7 @@ def extract_pdf_pages(content: bytes, settings: Settings) -> list[PdfPage]:
                 timeout=settings.pdf_text_timeout_seconds,
             )
     except FileNotFoundError as exc:
-        raise PdfTextToolUnavailableError(
-            "서버에 pdftotext가 설치되어 있지 않습니다."
-        ) from exc
+        raise PdfTextToolUnavailableError("서버에 pdftotext가 설치되어 있지 않습니다.") from exc
     except subprocess.TimeoutExpired as exc:
         raise PdfTextTimeoutError("PDF 텍스트 추출 시간이 초과되었습니다.") from exc
 

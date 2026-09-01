@@ -4,7 +4,7 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import Annotated
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, model_validator
 
 Ratio = Annotated[float, Field(ge=0.0, le=1.0)]
 NonNegativeManwon = Annotated[int, Field(ge=0)]
@@ -79,6 +79,10 @@ class HoldReasonCode(StrEnum):
     INTERIM_LOAN_RATIO_MISSING = "INTERIM_LOAN_RATIO_MISSING"
     BANK_NOT_DISCLOSED = "BANK_NOT_DISCLOSED"
     LOAN_ARRANGEMENT_ONLY = "LOAN_ARRANGEMENT_ONLY"
+    SELF_FUNDING_SCHEDULE_UNKNOWN = "SELF_FUNDING_SCHEDULE_UNKNOWN"
+    # Kept for backward-compatible parsing of v0.2 artifacts. New responses use
+    # SELF_FUNDING_SCHEDULE_UNKNOWN; the known self-funding amount itself is a
+    # risk factor, not an uncertainty.
     SELF_FUNDING_REQUIRED = "SELF_FUNDING_REQUIRED"
     GUARANTEE_PROVIDER_UNKNOWN = "GUARANTEE_PROVIDER_UNKNOWN"
     INTEREST_TERMS_UNKNOWN = "INTEREST_TERMS_UNKNOWN"
@@ -91,6 +95,11 @@ class HoldReasonCode(StrEnum):
     SOURCE_CONFLICT = "SOURCE_CONFLICT"
     EVIDENCE_MISSING = "EVIDENCE_MISSING"
     PDF_TEXT_UNAVAILABLE = "PDF_TEXT_UNAVAILABLE"
+
+
+class HoldKind(StrEnum):
+    DOCUMENT_UNCERTAINTY = "DOCUMENT_UNCERTAINTY"
+    PERSONAL_REVIEW = "PERSONAL_REVIEW"
 
 
 class ExceptionFlag(StrEnum):
@@ -117,6 +126,18 @@ class AnalyzeRequest(StrictModel):
     unit_type_id: Annotated[str | None, Field(max_length=100)] = None
     unit_type_name: Annotated[str | None, Field(max_length=100)] = None
     sale_price_manwon: NonNegativeManwon | None = None
+
+    @model_validator(mode="after")
+    def target_fields_are_complete(self) -> AnalyzeRequest:
+        target = (self.unit_type_id, self.unit_type_name, self.sale_price_manwon)
+        if any(value is not None for value in target) and not all(
+            value is not None for value in target
+        ):
+            raise ValueError(
+                "주택형 분석 시 unit_type_id, unit_type_name, "
+                "sale_price_manwon을 모두 보내야 합니다."
+            )
+        return self
 
 
 class Evidence(StrictModel):
@@ -145,7 +166,7 @@ class PaymentComponent(StrictModel):
     total_ratio: Ratio | None
     total_amount_manwon: NonNegativeManwon | None
     basis: PaymentBasis
-    installments: list[Installment]
+    installments: Annotated[list[Installment], Field(max_length=20)]
     due_date: date | None
     due_month: Annotated[str | None, Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")]
     due_text: Annotated[str | None, Field(max_length=200)]
@@ -164,7 +185,9 @@ class InterimLoan(StrictModel):
     self_funding_ratio: Ratio | None
     self_funding_amount_manwon: NonNegativeManwon | None
     self_funding_origin: ValueOrigin | None
-    bank_names: list[Annotated[str, Field(min_length=1, max_length=100)]]
+    bank_names: Annotated[
+        list[Annotated[str, Field(min_length=1, max_length=100)]], Field(max_length=10)
+    ]
     guarantee_provider: GuaranteeProvider | None
     interest_type: InterestType
     interest_note: Annotated[str | None, Field(max_length=500)]
@@ -178,16 +201,16 @@ class AdditionalCost(StrictModel):
     required: bool | None
     included_in_sale_price: bool | None
     applicable_unit_type: Annotated[str | None, Field(max_length=100)]
-    payments: list[AdditionalCostPayment]
+    payments: Annotated[list[AdditionalCostPayment], Field(max_length=20)]
     note: Annotated[str | None, Field(max_length=500)]
 
 
 class ExtractionDraft(StrictModel):
     payment_schedule: PaymentSchedule
     interim_loan: InterimLoan
-    additional_costs: list[AdditionalCost]
-    evidence: list[Evidence]
-    exception_flags: list[ExceptionFlag]
+    additional_costs: Annotated[list[AdditionalCost], Field(max_length=20)]
+    evidence: Annotated[list[Evidence], Field(max_length=100)]
+    exception_flags: Annotated[list[ExceptionFlag], Field(max_length=10)]
 
 
 class TargetUnit(StrictModel):
@@ -198,6 +221,8 @@ class TargetUnit(StrictModel):
 
 class Hold(StrictModel):
     reason_code: HoldReasonCode
+    kind: HoldKind
+    blocking: bool
     message: str
     next_action: str
 

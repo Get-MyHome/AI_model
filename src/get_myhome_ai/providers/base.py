@@ -10,6 +10,8 @@ class ExtractorProvider(Protocol):
     name: str
     model_name: str | None
 
+    async def ready(self) -> bool: ...
+
     async def extract(
         self,
         *,

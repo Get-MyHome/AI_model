@@ -12,6 +12,9 @@ class FixtureExtractor:
     def __init__(self, fixtures: dict[str, ExtractionDraft]) -> None:
         self.fixtures = fixtures
 
+    async def ready(self) -> bool:
+        return True
+
     async def extract(
         self,
         *,

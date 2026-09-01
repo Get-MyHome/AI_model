@@ -5,6 +5,7 @@ from get_myhome_ai.models import (
     ExceptionFlag,
     ExtractionDraft,
     Hold,
+    HoldKind,
     HoldReasonCode,
     InterestType,
     IssueSeverity,
@@ -41,9 +42,13 @@ HOLD_TEXT: dict[HoldReasonCode, tuple[str, str]] = {
         "대출 알선은 예정이지만 보장된 조건은 아니에요.",
         "알선 확정 여부와 불가 시 자납 일정을 확인하세요.",
     ),
+    HoldReasonCode.SELF_FUNDING_SCHEDULE_UNKNOWN: (
+        "직접 납부할 중도금은 확인됐지만 어느 회차에 낼지는 불명확해요.",
+        "자납분의 회차별 금액과 납부일을 시행사에 확인하세요.",
+    ),
     HoldReasonCode.SELF_FUNDING_REQUIRED: (
         "중도금 일부를 직접 마련해야 해요.",
-        "자납 비율 또는 금액의 회차별 납부일을 확인하세요.",
+        "이전 응답 코드입니다. 자납 회차가 불명확하면 회차별 금액과 납부일을 확인하세요.",
     ),
     HoldReasonCode.GUARANTEE_PROVIDER_UNKNOWN: (
         "중도금 대출 보증기관을 확인하지 못했어요.",
@@ -94,7 +99,17 @@ HOLD_TEXT: dict[HoldReasonCode, tuple[str, str]] = {
 
 def _make(code: HoldReasonCode) -> Hold:
     message, next_action = HOLD_TEXT[code]
-    return Hold(reason_code=code, message=message, next_action=next_action)
+    personal_review_codes = {HoldReasonCode.INDIVIDUAL_REVIEW_REQUIRED}
+    kind = (
+        HoldKind.PERSONAL_REVIEW if code in personal_review_codes else HoldKind.DOCUMENT_UNCERTAINTY
+    )
+    return Hold(
+        reason_code=code,
+        kind=kind,
+        blocking=kind == HoldKind.DOCUMENT_UNCERTAINTY,
+        message=message,
+        next_action=next_action,
+    )
 
 
 def derive_holds(
@@ -118,10 +133,19 @@ def derive_holds(
         and schedule.interim_payment.total_amount_manwon is None
     ):
         codes.append(HoldReasonCode.INTERIM_PAYMENT_MISSING)
-    if (
+    balance_value_missing = (
         schedule.balance_payment.total_ratio is None
         and schedule.balance_payment.total_amount_manwon is None
-    ):
+    )
+    balance_due_missing = all(
+        value is None
+        for value in (
+            schedule.balance_payment.due_date,
+            schedule.balance_payment.due_month,
+            schedule.balance_payment.due_text,
+        )
+    )
+    if balance_value_missing or balance_due_missing:
         codes.append(HoldReasonCode.BALANCE_PAYMENT_MISSING)
     interim_schedule_issue_codes = {
         "INSTALLMENT_VALUE_MISSING",
@@ -149,10 +173,7 @@ def derive_holds(
         codes.append(HoldReasonCode.LOAN_ARRANGEMENT_ONLY)
         if not loan.bank_names:
             codes.append(HoldReasonCode.BANK_NOT_DISCLOSED)
-    elif (
-        loan.arrangement_status == LoanArrangementStatus.BANK_SELECTED
-        and not loan.bank_names
-    ):
+    elif loan.arrangement_status == LoanArrangementStatus.BANK_SELECTED and not loan.bank_names:
         codes.append(HoldReasonCode.BANK_NOT_DISCLOSED)
 
     if (
@@ -161,8 +182,13 @@ def derive_holds(
         and loan.arranged_amount_manwon is None
     ):
         codes.append(HoldReasonCode.INTERIM_LOAN_RATIO_MISSING)
-    if (loan.self_funding_ratio or 0) > 0 or (loan.self_funding_amount_manwon or 0) > 0:
-        codes.append(HoldReasonCode.SELF_FUNDING_REQUIRED)
+    if loan.arrangement_status != LoanArrangementStatus.NOT_AVAILABLE and (
+        (loan.self_funding_ratio or 0) > 0 or (loan.self_funding_amount_manwon or 0) > 0
+    ):
+        # The known self-funding burden is a risk factor, not a HOLD by itself.
+        # Until the contract carries per-installment loan coverage, however, the
+        # backend cannot claim an exact first shortfall date.
+        codes.append(HoldReasonCode.SELF_FUNDING_SCHEDULE_UNKNOWN)
     if (
         loan.arrangement_status != LoanArrangementStatus.NOT_AVAILABLE
         and loan.interest_type == InterestType.UNKNOWN
@@ -175,7 +201,11 @@ def derive_holds(
     if ExceptionFlag.INDIVIDUAL_REVIEW_NOTED in flags:
         codes.append(HoldReasonCode.INDIVIDUAL_REVIEW_REQUIRED)
 
-    if any(issue.code == "ADDITIONAL_COST_INCOMPLETE" for issue in validation.issues):
+    additional_cost_issue_codes = {
+        "ADDITIONAL_COST_INCOMPLETE",
+        "ADDITIONAL_COST_SCHEDULE_MISSING",
+    }
+    if any(issue.code in additional_cost_issue_codes for issue in validation.issues):
         codes.append(HoldReasonCode.ADDITIONAL_COST_UNKNOWN)
     if any(issue.code == "EVIDENCE_MISSING" for issue in validation.issues):
         codes.append(HoldReasonCode.EVIDENCE_MISSING)
@@ -184,7 +214,7 @@ def derive_holds(
     if any("CONFLICT" in issue.code for issue in validation.issues):
         codes.append(HoldReasonCode.SOURCE_CONFLICT)
 
-    unique_codes = list(dict.fromkeys(codes))[:7]
+    unique_codes = list(dict.fromkeys(codes))
     return [_make(code) for code in unique_codes]
 
 
@@ -199,6 +229,7 @@ def derive_analysis_status(validation: ValidationReport, holds: list[Hold]) -> A
         HoldReasonCode.INTERIM_LOAN_RATIO_MISSING,
         HoldReasonCode.BANK_NOT_DISCLOSED,
         HoldReasonCode.LOAN_ARRANGEMENT_ONLY,
+        HoldReasonCode.SELF_FUNDING_SCHEDULE_UNKNOWN,
         HoldReasonCode.INTEREST_TERMS_UNKNOWN,
         HoldReasonCode.UNIT_SELECTION_REQUIRED,
         HoldReasonCode.ADDITIONAL_COST_UNKNOWN,

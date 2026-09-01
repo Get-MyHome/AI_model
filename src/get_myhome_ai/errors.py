@@ -54,3 +54,20 @@ class ProviderError(AnalysisError):
     code = "MODEL_EXTRACTION_FAILED"
     status_code = 502
     retryable = True
+
+
+class AnalysisTimeoutError(AnalysisError):
+    code = "ANALYSIS_TIMEOUT"
+    status_code = 504
+    retryable = True
+
+
+class AuthenticationError(AnalysisError):
+    code = "AUTHENTICATION_FAILED"
+    status_code = 401
+
+
+class AnalysisBusyError(AnalysisError):
+    code = "ANALYSIS_SERVER_BUSY"
+    status_code = 503
+    retryable = True

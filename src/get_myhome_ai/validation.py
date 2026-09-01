@@ -192,10 +192,26 @@ def _extracted_value_paths(draft: ExtractionDraft, derived: set[str]) -> list[st
 
 
 def _path_has_evidence(path: str, evidence_fields: set[str]) -> bool:
-    return any(
-        path == evidence or path.startswith(f"{evidence}/") or evidence.startswith(f"{path}/")
+    if path in evidence_fields:
+        return True
+
+    # A table row can legitimately support all fields in one payment component
+    # or one additional-cost item.  Other parents (notably /interim_loan) are
+    # intentionally *not* accepted: a quote about the loan ratio must not also
+    # prove the bank, interest type, or prepayment requirement.
+    group_evidence = {
+        evidence
         for evidence in evidence_fields
-    )
+        if evidence
+        in {
+            "/payment_schedule/down_payment",
+            "/payment_schedule/interim_payment",
+            "/payment_schedule/balance_payment",
+            "/payment_schedule/interim_payment/installments",
+        }
+        or re.fullmatch(r"/additional_costs/\d+", evidence)
+    }
+    return any(path.startswith(f"{evidence}/") for evidence in group_evidence)
 
 
 def _json_pointer_exists(document: object, pointer: str) -> bool:
@@ -233,6 +249,17 @@ def validate_draft(
         (schedule.balance_payment, "/payment_schedule/balance_payment"),
     ):
         _validate_component(component, path, issues)
+
+    balance = schedule.balance_payment
+    if all(value is None for value in (balance.due_date, balance.due_month, balance.due_text)):
+        issues.append(
+            _issue(
+                IssueSeverity.WARNING,
+                "BALANCE_DUE_MISSING",
+                "잔금 납부일 또는 입주예정월을 확인하지 못했습니다.",
+                "/payment_schedule/balance_payment",
+            )
+        )
 
     ratios = [
         schedule.down_payment.total_ratio,
@@ -442,8 +469,11 @@ def validate_draft(
             cost.total_amount_manwon is not None
             and payment_amounts
             and all(value is not None for value in payment_amounts)
-            and sum(value for value in payment_amounts if value is not None)
-            != cost.total_amount_manwon
+            and abs(
+                sum(value for value in payment_amounts if value is not None)
+                - cost.total_amount_manwon
+            )
+            > 1
         ):
             issues.append(
                 _issue(
@@ -465,6 +495,20 @@ def validate_draft(
                 )
         if cost.included_in_sale_price is True:
             continue
+        if not cost.payments or all(
+            payment.stage.value == "UNKNOWN"
+            and payment.due_date is None
+            and payment.due_text is None
+            for payment in cost.payments
+        ):
+            issues.append(
+                _issue(
+                    IssueSeverity.WARNING,
+                    "ADDITIONAL_COST_SCHEDULE_MISSING",
+                    "추가비용의 납부 구간 또는 납부 시점을 확인하지 못했습니다.",
+                    f"/additional_costs/{index}/payments",
+                )
+            )
         if cost.total_amount_manwon is None or cost.required is None:
             issues.append(
                 _issue(

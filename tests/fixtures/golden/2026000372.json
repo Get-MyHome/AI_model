@@ -77,7 +77,10 @@
       {"field": "/payment_schedule/interim_payment/installments", "page": 6, "raw_text": "2027.04.13.   2027.10.13.   2028.04.13.   2029.01.13.   2029.04.13.   2029.07.13."},
       {"field": "/payment_schedule/balance_payment/due_month", "page": 5, "raw_text": "입주시기 : 2030년 01월 예정"},
       {"field": "/interim_loan/arrangement_status", "page": 7, "raw_text": "사업주체가 알선한 대출취급기관의 중도금 대출"},
-      {"field": "/interim_loan", "page": 31, "raw_text": "본 사업은 중도금 대출 “이자후불제” 사업이며, 대출은 중도금 (총 분양 대금의 40%) 범위 내에서 가능합니다."},
+      {"field": "/interim_loan/arranged_ratio", "page": 31, "raw_text": "대출은 중도금 (총 분양 대금의 40%) 범위 내에서 가능합니다."},
+      {"field": "/interim_loan/interest_type", "page": 31, "raw_text": "본 사업은 중도금 대출 “이자후불제” 사업"},
+      {"field": "/interim_loan/interest_note", "page": 31, "raw_text": "상기의 중도금 대출 이자는 입주개시일(변경 통지 시 변경일) 전일까지만 사업주체에서 이자를 대납"},
+      {"field": "/interim_loan/prepay_requirement_ratio", "page": 7, "raw_text": "분양대금의 총 10% 완납 후"},
       {"field": "/additional_costs/0", "page": 33, "raw_text": "59A                18,700,000               1,870,000                16,830,000"}
     ],
     "exception_flags": ["LOAN_MEDIATION_NOT_GUARANTEED", "INDIVIDUAL_REVIEW_NOTED"]

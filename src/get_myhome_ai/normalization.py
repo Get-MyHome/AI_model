@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from get_myhome_ai.models import (
     ExceptionFlag,
     ExtractionDraft,
@@ -9,6 +11,21 @@ from get_myhome_ai.models import (
     PaymentComponent,
     ValueOrigin,
 )
+
+BACKEND_UNIT_TYPE = re.compile(r"^0*(?P<area>\d{2,3})\.\d+(?P<suffix>[A-Za-z]*)$")
+
+
+def normalize_unit_type_name(value: str | None) -> str | None:
+    """백엔드 전용면적 표기를 PDF 약식 주택형 표기로 바꾼다."""
+    if value is None:
+        return None
+    stripped = value.strip()
+    match = BACKEND_UNIT_TYPE.fullmatch(stripped)
+    if not match:
+        return stripped
+    area = int(match.group("area"))
+    suffix = match.group("suffix").upper()
+    return f"{area}{suffix}"
 
 
 def _infer_component(component: PaymentComponent, path: str, derived: list[str]) -> None:

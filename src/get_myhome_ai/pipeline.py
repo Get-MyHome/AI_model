@@ -20,7 +20,7 @@ from get_myhome_ai.models import (
     ReviewStatus,
     TargetUnit,
 )
-from get_myhome_ai.normalization import normalize_draft
+from get_myhome_ai.normalization import normalize_draft, normalize_unit_type_name
 from get_myhome_ai.pdf_text import (
     DownloadedPdf,
     PdfPage,
@@ -126,6 +126,7 @@ class AnalysisPipeline:
         unit_type_name: str | None,
         sale_price_manwon: int | None,
     ) -> AnalysisResponse:
+        normalized_unit_type_name = normalize_unit_type_name(unit_type_name)
         pages = await asyncio.to_thread(
             self.page_extractor,
             downloaded.content,
@@ -141,7 +142,7 @@ class AnalysisPipeline:
                 complex_id=complex_id,
                 pages=candidates,
                 unit_type_id=unit_type_id,
-                unit_type_name=unit_type_name,
+                unit_type_name=normalized_unit_type_name,
                 sale_price_manwon=sale_price_manwon,
             )
         else:
@@ -158,7 +159,7 @@ class AnalysisPipeline:
         holds = derive_holds(
             normalized,
             validation,
-            unit_type_name=unit_type_name,
+            unit_type_name=normalized_unit_type_name,
             text_available=text_available,
         )
         status = derive_analysis_status(validation, holds)
@@ -173,7 +174,7 @@ class AnalysisPipeline:
             reviewed_at=None,
             target_unit=TargetUnit(
                 unit_type_id=unit_type_id,
-                unit_type_name=unit_type_name,
+                unit_type_name=normalized_unit_type_name,
                 sale_price_manwon=sale_price_manwon,
             ),
             payment_schedule=normalized.payment_schedule,

@@ -34,7 +34,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="get-myhome-ai")
     parser.add_argument(
         "--provider",
-        choices=("openai", "fixture"),
+        choices=("ollama", "openai", "fixture"),
         help="환경변수 AI_PROVIDER를 이 실행에서만 덮어씁니다.",
     )
     parser.add_argument("--fixture-dir", type=Path)

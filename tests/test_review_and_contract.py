@@ -32,6 +32,7 @@ async def _result(case):
         AnalyzeRequest(
             complex_id=case.complex_id,
             pdf_url="https://example.com/file.pdf",
+            unit_type_id="golden-unit",
             unit_type_name=case.unit_type_name,
             sale_price_manwon=case.sale_price_manwon,
         )

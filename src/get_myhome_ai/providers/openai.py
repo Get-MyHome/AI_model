@@ -24,6 +24,9 @@ class OpenAIExtractor:
                 timeout=settings.openai_timeout_seconds,
             )
 
+    async def ready(self) -> bool:
+        return self.client is not None
+
     async def extract(
         self,
         *,

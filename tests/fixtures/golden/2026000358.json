@@ -77,7 +77,12 @@
       {"field": "/payment_schedule/balance_payment", "page": 6, "raw_text": "잔금(30%)"},
       {"field": "/payment_schedule/interim_payment/installments", "page": 6, "raw_text": "2027.02.05.   2027.09.03.   2028.04.07.   2028.12.08.   2029.06.08.   2029.12.07"},
       {"field": "/payment_schedule/balance_payment/due_month", "page": 5, "raw_text": "입주시기 : 2030년 05월 예정"},
-      {"field": "/interim_loan", "page": 37, "raw_text": "총 공급대금의 60% 중 총 공급대금의 40% 범위 내에서 대출 알선이 가능하며 나머지 총 공급대금의 20%는 계약자가 직접 납부(자납)하여야 합니다."},
+      {"field": "/interim_loan/arrangement_status", "page": 37, "raw_text": "중도금 융자 알선을 시행할 예정입니다."},
+      {"field": "/interim_loan/arranged_ratio", "page": 37, "raw_text": "총 공급대금의 60% 중 총 공급대금의 40% 범위 내에서 대출 알선이 가능하며 나머지 총 공급대금의 20%는 계약자가 직접 납부(자납)하여야 합니다."},
+      {"field": "/interim_loan/self_funding_ratio", "page": 37, "raw_text": "총 공급대금의 60% 중 총 공급대금의 40% 범위 내에서 대출 알선이 가능하며 나머지 총 공급대금의 20%는 계약자가 직접 납부(자납)하여야 합니다."},
+      {"field": "/interim_loan/interest_type", "page": 37, "raw_text": "대출 조건은 중도금 이자후불제로"},
+      {"field": "/interim_loan/interest_note", "page": 38, "raw_text": "중도금 대출 이자는 입주지정기간 최초일 전일까지 시행위탁자가 대납하되"},
+      {"field": "/interim_loan/prepay_requirement_ratio", "page": 8, "raw_text": "분양대금의 총 10% 완납 후"},
       {"field": "/additional_costs/0", "page": 38, "raw_text": "39A              15,000,000       1,500,000                    1,500,000                              12,000,000"}
     ],
     "exception_flags": ["LOAN_MEDIATION_NOT_GUARANTEED", "SELF_FUNDING_REQUIRED"]
