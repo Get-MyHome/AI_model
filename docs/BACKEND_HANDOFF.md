@@ -51,6 +51,23 @@ MVP는 공고 한 건을 한 번만 분석하는 것이 아니라 backend의 각
 
 `POST /api/analyze`는 다음 내용을 포함한 v0.3 정본 JSON을 반환합니다.
 
+### 전체 성공 응답 예시
+
+백엔드 DTO 작성과 연동 테스트에는
+[`docs/examples/analyze-response-v0.3.json`](examples/analyze-response-v0.3.json)을
+사용합니다. 현재 Qwen3.5 분석기가 실제 `2026000372` 주택형을 분석해 반환한
+`AnalysisResponse v0.3` 전체 JSON이며, 아래 항목의 중첩 필드와 `null` 필드까지 모두
+포함합니다.
+
+- `analysis_status`, `review_status`, `target_unit`
+- `payment_schedule`, `interim_loan`, `additional_costs`
+- `risk_clauses`, `analysis_summary`, `holds`, `exception_flags`
+- `evidence`, `validation`, `meta`
+
+이 파일은 응답 형태를 보여주기 위한 `AUTO_EXTRACTED` 예시입니다. 백엔드가 사용자
+최종 자금판정에 사용할 수 있다는 뜻은 아닙니다. 실제 판정에는 정확한 대상 키가
+일치하고 `review_status=REVIEWED`, `validation.passed=true`인 응답만 사용합니다.
+
 - 계약금·중도금·잔금: 총비율 또는 정액, 회차별 비율·금액·납부일
 - 중도금 대출: 알선 상태, 분양가 대비 대출비율, 자납비율, 은행 공개 여부, 이자 방식
 - 추가비용: 유형, 주택형, 총액, 필수 여부, 분양가 포함 여부, 회차별 납부 구간
