@@ -7,6 +7,7 @@ from get_myhome_ai.models import (
     ExtractionDraft,
     InterestType,
     LoanArrangementStatus,
+    LoanSettlementRequirement,
     PaymentBasis,
     PaymentComponent,
     ValueOrigin,
@@ -92,6 +93,9 @@ def normalize_draft(draft: ExtractionDraft) -> tuple[ExtractionDraft, list[str]]
     loan = normalized.interim_loan
     interim = schedule.interim_payment
     if loan.arrangement_status == LoanArrangementStatus.NOT_AVAILABLE:
+        if loan.settlement_requirement != LoanSettlementRequirement.NOT_APPLICABLE:
+            loan.settlement_requirement = LoanSettlementRequirement.NOT_APPLICABLE
+            derived.append("/interim_loan/settlement_requirement")
         if loan.arranged_ratio is None:
             loan.arranged_ratio = 0.0
             derived.append("/interim_loan/arranged_ratio")

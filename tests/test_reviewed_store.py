@@ -61,6 +61,7 @@ async def test_exact_source_and_target_review_is_selected(tmp_path: Path, golden
         source_sha256=automatic.meta.source_sha256,
         reviewed_artifact_dir=tmp_path,
         schema_version="v0.3",
+        extractor_version=automatic.meta.extractor_version,
     )
 
     assert actual is not None
@@ -89,6 +90,32 @@ async def test_stale_or_wrong_target_review_is_never_selected(tmp_path: Path, go
         source_sha256=automatic.meta.source_sha256,
         reviewed_artifact_dir=tmp_path,
         schema_version="v0.3",
+        extractor_version=automatic.meta.extractor_version,
+    )
+
+    assert actual is None
+
+
+async def test_review_from_old_extractor_is_never_selected(tmp_path: Path, golden_cases) -> None:
+    case = golden_cases["2026000358"]
+    automatic = await _automatic_result(tmp_path, case)
+    reviewed = _reviewed_copy(automatic)
+    reviewed.meta.extractor_version = "0.1.0"
+    save_result(reviewed, tmp_path / "old-extractor.json")
+    request = AnalyzeRequest(
+        complex_id=case.complex_id,
+        pdf_url="https://example.com/source.pdf",
+        unit_type_id="01",
+        unit_type_name=case.unit_type_name,
+        sale_price_manwon=case.sale_price_manwon,
+    )
+
+    actual = find_reviewed_artifact(
+        request=request,
+        source_sha256=automatic.meta.source_sha256,
+        reviewed_artifact_dir=tmp_path,
+        schema_version="v0.3",
+        extractor_version="0.2.0",
     )
 
     assert actual is None

@@ -50,6 +50,15 @@ class InterestType(StrEnum):
     NOT_APPLICABLE = "NOT_APPLICABLE"
 
 
+class LoanSettlementRequirement(StrEnum):
+    REPAY_OR_CONVERT_TO_MORTGAGE = "REPAY_OR_CONVERT_TO_MORTGAGE"
+    REPAY_REQUIRED = "REPAY_REQUIRED"
+    CONVERT_TO_MORTGAGE_REQUIRED = "CONVERT_TO_MORTGAGE_REQUIRED"
+    CONTINUE_EXPLICITLY_ALLOWED = "CONTINUE_EXPLICITLY_ALLOWED"
+    NOT_STATED = "NOT_STATED"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+
+
 class GuaranteeProvider(StrEnum):
     HF = "HF"
     HUG = "HUG"
@@ -108,6 +117,15 @@ class ExceptionFlag(StrEnum):
     TERMS_DIFFER_BY_TYPE = "TERMS_DIFFER_BY_TYPE"
     INDIVIDUAL_REVIEW_NOTED = "INDIVIDUAL_REVIEW_NOTED"
     FIXED_AMOUNT_PAYMENT = "FIXED_AMOUNT_PAYMENT"
+
+
+class RiskClauseCode(StrEnum):
+    LOAN_MEDIATION_NOT_GUARANTEED = "LOAN_MEDIATION_NOT_GUARANTEED"
+    INDIVIDUAL_REVIEW_REQUIRED = "INDIVIDUAL_REVIEW_REQUIRED"
+    SELF_FUNDING_REQUIRED = "SELF_FUNDING_REQUIRED"
+    INTEREST_PAYMENT_RISK = "INTEREST_PAYMENT_RISK"
+    LOAN_NOT_AVAILABLE = "LOAN_NOT_AVAILABLE"
+    TERMS_DIFFER_BY_HOUSING_TYPE = "TERMS_DIFFER_BY_HOUSING_TYPE"
 
 
 class IssueSeverity(StrEnum):
@@ -192,6 +210,18 @@ class InterimLoan(StrictModel):
     interest_type: InterestType
     interest_note: Annotated[str | None, Field(max_length=500)]
     prepay_requirement_ratio: Ratio | None
+    settlement_requirement: LoanSettlementRequirement = LoanSettlementRequirement.NOT_STATED
+    settlement_deadline_text: Annotated[str | None, Field(max_length=300)] = None
+    extension_contingency_disclosed: bool | None = None
+
+
+class RiskClause(StrictModel):
+    code: RiskClauseCode
+    impact_stage: PaymentStage
+    origin: ValueOrigin
+    message: Annotated[str, Field(min_length=1, max_length=300)]
+    next_action: Annotated[str, Field(min_length=1, max_length=300)]
+    evidence: Annotated[list[Evidence], Field(min_length=1, max_length=3)]
 
 
 class AdditionalCost(StrictModel):
@@ -209,6 +239,7 @@ class ExtractionDraft(StrictModel):
     payment_schedule: PaymentSchedule
     interim_loan: InterimLoan
     additional_costs: Annotated[list[AdditionalCost], Field(max_length=20)]
+    risk_clauses: Annotated[list[RiskClause], Field(default_factory=list, max_length=20)]
     evidence: Annotated[list[Evidence], Field(max_length=100)]
     exception_flags: Annotated[list[ExceptionFlag], Field(max_length=10)]
 
@@ -262,6 +293,7 @@ class AnalysisResponse(StrictModel):
     payment_schedule: PaymentSchedule
     interim_loan: InterimLoan
     additional_costs: list[AdditionalCost]
+    risk_clauses: list[RiskClause] = Field(default_factory=list)
     analysis_summary: str
     holds: list[Hold]
     exception_flags: list[ExceptionFlag]

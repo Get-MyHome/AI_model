@@ -135,6 +135,7 @@ def create_app(
             source_sha256=downloaded.sha256,
             reviewed_artifact_dir=active_settings.reviewed_artifact_dir,
             schema_version=active_settings.schema_version,
+            extractor_version=active_settings.extractor_version,
         )
         if reviewed is not None:
             return reviewed

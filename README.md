@@ -19,6 +19,8 @@ Get-MyHome은 청약 당첨 이후 계약금·중도금·잔금 사이의 자금
 - 공고에 비율 대신 정액이 있으면 임의 환산하지 않고 정액으로 보존합니다.
 - 없는 값은 0이 아니라 `null`과 HOLD로 표현합니다.
 - LLM은 요약·조언·판정을 만들지 않습니다. 안내문과 요약은 검증값 기반 고정 템플릿입니다.
+- 입주 시 중도금 대출 상환·담보대출 전환 조건과 사용자 자금에 영향을 주는 위험조항도
+  페이지 근거와 고정 코드로 반환합니다.
 - AI의 `analysis_status`는 문서 분석 상태입니다. 사용자의 최종 `funding_status`와 동일하지 않습니다.
 - 추출값은 PDF 페이지와 실제 원문 근거가 있어야 합니다.
 - 발코니 확장비 등 선택비용은 사용자 선택 전 자동 합산하지 않습니다.
@@ -49,6 +51,13 @@ python -m pip install -e '.[dev]'
 ```
 
 기본 provider는 로컬 Ollama의 `qwen3.5:9b`입니다. 사람이 원본 PDF를 대조해 잠근 24개 공고문을 독립 재실행한 결과, 평가 범위의 핵심 라벨 260/260이 일치했고 문서별 핵심 필드·안전성 판정도 각각 24/24가 일치했습니다. 공고문 전체 검수에서 값이 미기재된 것으로 확인된 라벨 4개는 모두 값을 생성하지 않고 안전하게 기권했습니다. 이 수치는 주택형별 금액·추가비용·은행명·보증기관을 제외한 문서 단위 핵심 필드에만 적용되며, 근거 문장의 의미적 정확도는 아직 별도 사람 채점이 없어 `NOT_EVALUATED`입니다. 따라서 이를 “27건 전체 필드 정확도 100%” 또는 “근거 정확도 100%”라고 표현하지 않습니다. 모델 출력에는 고정 근거 검증과 사람 검수를 계속 적용합니다.
+
+별도로 상환·전환 조건과 6개 위험조항의 **고정 후처리 규칙**을 실제 공고문 27건에
+전수 대조했습니다. 문서별 정확 일치 27/27, 참조 라벨 189/189, 반환된 위험조항 원문이
+해당 PDF 페이지에 실제 존재하는지 89/89를 확인했습니다. 이는 Qwen 모델 정확도가 아니라
+사람이 만든 참조 라벨 대비 결정론적 규칙 검증 결과입니다. 보유 표본에
+`TERMS_DIFFER_BY_HOUSING_TYPE` 양성 문서가 없어 해당 코드의 실제 양성 성능은 평가하지
+못했습니다. 재현 명령은 `python scripts/evaluate_risk_settlement.py`입니다.
 
 ```bash
 ollama pull qwen3.5:9b
@@ -120,10 +129,19 @@ get-myhome-ai serve --host 0.0.0.0 --port 9000
 - `GET /health`: 프로세스 생존 확인
 - `GET /ready`: `pdftotext`·임시 디렉터리·Provider·인증·PDF 호스트 허용 목록 확인
 
+현재 backend 연결 시험용 외부 주소는 다음과 같습니다.
+
+```text
+https://server.tailb23d4f.ts.net:10000/api/analyze
+```
+
+API 키는 저장소에 커밋하지 않고 `.local/runtime/get-myhome-ai.env`에만 둡니다. 팀에는 채팅이나
+GitHub가 아닌 별도 비밀 전달 채널로 공유합니다.
+
 외부 연결 시 `.env`에 32자 이상의 무작위 `AI_API_KEY`를 설정하고 backend가 `Authorization: Bearer <key>` 헤더를 보내야 합니다. Ollama 포트 `11434`는 외부에 열지 않고 loopback으로 유지합니다. 운영에서는 `ENABLE_DOCS=false`, 정확한 S3 버킷 호스트만 `PDF_ALLOWED_HOSTS`에 넣습니다. 인증이나 호스트 목록이 없으면 `/ready`는 503을 반환하며 분석 API도 무인증으로 열리지 않습니다.
 
 ```bash
-curl -X POST 'https://<ai-host>/api/analyze' \
+curl -X POST 'https://server.tailb23d4f.ts.net:10000/api/analyze' \
   -H 'Authorization: Bearer <key>' \
   -H 'Content-Type: application/json' \
   -d '{

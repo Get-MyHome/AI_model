@@ -26,6 +26,7 @@ def find_reviewed_artifact(
     source_sha256: str,
     reviewed_artifact_dir: Path,
     schema_version: str,
+    extractor_version: str,
 ) -> AnalysisResponse | None:
     """Find an immutable human review before invoking the extraction model.
 
@@ -54,6 +55,8 @@ def find_reviewed_artifact(
         if not candidate.validation.passed:
             continue
         if candidate.meta.schema_version != schema_version:
+            continue
+        if candidate.meta.extractor_version != extractor_version:
             continue
         if candidate.meta.source_sha256 != source_sha256:
             continue

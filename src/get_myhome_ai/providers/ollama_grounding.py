@@ -15,8 +15,11 @@ from get_myhome_ai.models import (
     Installment,
     InterestType,
     LoanArrangementStatus,
+    LoanSettlementRequirement,
     PaymentBasis,
     PaymentStage,
+    RiskClause,
+    RiskClauseCode,
     ValueOrigin,
 )
 
@@ -191,7 +194,35 @@ INDIVIDUAL_REVIEW = re.compile(
     re.DOTALL,
 )
 TERMS_BY_TYPE = re.compile(
-    r"(?P<raw>(?:주택형|타입)별.{0,100}?(?:대출|중도금).{0,80}?(?:상이|다름))",
+    r"(?P<raw>(?:(?:주택형|타입)별[^.\n]{0,80}?(?:대출|중도금)"
+    r"[^.\n]{0,60}?(?:상이|다름)"
+    r"|(?:대출|중도금)[^.\n]{0,80}?(?:주택형|타입)별"
+    r"[^.\n]{0,60}?(?:상이|다름)))",
+)
+INDIVIDUAL_REVIEW_FINAL = re.compile(
+    r"(?P<raw>대출\s*가능\s*여부는\s*확정\s*사항이\s*아니며"
+    r".{0,160}?대출취급기관의\s*심사를\s*거쳐\s*최종\s*결정)",
+    re.DOTALL,
+)
+SETTLEMENT_REPAY_OR_CONVERT = re.compile(
+    r"(?P<raw>계약자는\s*입주.{0,100}?(?:중도금\s*)?대출금을?\s*"
+    r"상환하거나\s*담보대출로\s*전환)",
+    re.DOTALL,
+)
+SETTLEMENT_ENTRY_DOCUMENT = re.compile(
+    r"(?P<raw>입주지정기간.{0,300}?중도금\s*대출\s*상환\s*영수증"
+    r".{0,100}?또는.{0,100}?중도금\s*대출에서\s*담보대출로\s*대환)",
+    re.DOTALL,
+)
+SETTLEMENT_EXTENSION = re.compile(
+    r"(?P<raw>대출\s*기간\s*만료\s*시.{0,160}?대출\s*기간\s*연장)",
+    re.DOTALL,
+)
+INTEREST_BORROWER_BURDEN = re.compile(
+    r"(?P<raw>중도금\s*대출\s*이자.{0,320}?(?:"
+    r"대납이자.{0,160}?(?:완납|정산|납부)"
+    r"|입주(?:지정기간|개시일).{0,100}?(?:부터|이후).{0,120}?"
+    r"계약자가.{0,80}?직접\s*납부))",
     re.DOTALL,
 )
 
@@ -933,6 +964,233 @@ def _ground_loan(draft: ExtractionDraft, pages: list[CandidatePage]) -> list[Evi
     return evidence
 
 
+def _settlement_deadline(raw_text: str) -> str:
+    compact = _normalized(raw_text)
+    if "입주증발급일" in compact and "입주지정기간종료일" in compact:
+        return "입주증 발급일 또는 입주지정기간 종료일 중 빠른 날까지"
+    if "입주지정기간" in compact:
+        return "입주지정기간 내 입주증 발급 전"
+    if "입주시" in compact:
+        return "입주 시"
+    return "입주 전"
+
+
+def _ground_settlement(
+    draft: ExtractionDraft,
+    pages: list[CandidatePage],
+) -> list[Evidence]:
+    evidence: list[Evidence] = []
+    loan = draft.interim_loan
+    loan.settlement_requirement = LoanSettlementRequirement.NOT_STATED
+    loan.settlement_deadline_text = None
+    loan.extension_contingency_disclosed = None
+
+    unavailable = _find(pages, NOT_AVAILABLE)
+    direct = _find(pages, SETTLEMENT_REPAY_OR_CONVERT)
+    entry_document = _find(pages, SETTLEMENT_ENTRY_DOCUMENT)
+    extension = _find(pages, SETTLEMENT_EXTENSION)
+
+    if unavailable:
+        page_number, match = unavailable
+        loan.settlement_requirement = LoanSettlementRequirement.NOT_APPLICABLE
+        evidence.append(
+            Evidence(
+                field="/interim_loan/settlement_requirement",
+                page=page_number,
+                raw_text=match.group("raw"),
+            )
+        )
+    elif direct or entry_document:
+        page_number, match = direct or entry_document  # type: ignore[misc]
+        raw_text = match.group("raw")
+        loan.settlement_requirement = (
+            LoanSettlementRequirement.REPAY_OR_CONVERT_TO_MORTGAGE
+        )
+        loan.settlement_deadline_text = _settlement_deadline(raw_text)
+        for field in (
+            "/interim_loan/settlement_requirement",
+            "/interim_loan/settlement_deadline_text",
+        ):
+            evidence.append(Evidence(field=field, page=page_number, raw_text=raw_text))
+
+    if extension:
+        page_number, match = extension
+        loan.extension_contingency_disclosed = True
+        evidence.append(
+            Evidence(
+                field="/interim_loan/extension_contingency_disclosed",
+                page=page_number,
+                raw_text=match.group("raw"),
+            )
+        )
+    return evidence
+
+
+RISK_TEXT: dict[RiskClauseCode, tuple[PaymentStage, str, str]] = {
+    RiskClauseCode.LOAN_MEDIATION_NOT_GUARANTEED: (
+        PaymentStage.INTERIM,
+        "사업주체의 중도금 대출 알선은 실제 실행을 보장하지 않습니다.",
+        "알선 확정 여부와 불가 시 직접 납부 일정을 시행사에 확인하세요.",
+    ),
+    RiskClauseCode.INDIVIDUAL_REVIEW_REQUIRED: (
+        PaymentStage.INTERIM,
+        "사업장 대출 조건과 별개로 개인별 금융기관 심사가 남아 있습니다.",
+        "소득·기존 대출을 기준으로 실제 승인 비율과 한도를 금융기관에 확인하세요.",
+    ),
+    RiskClauseCode.SELF_FUNDING_REQUIRED: (
+        PaymentStage.INTERIM,
+        "중도금 중 사업장 알선 대출로 충당되지 않는 직접 조달분이 있습니다.",
+        "직접 납부할 비율과 회차별 금액·납부일을 시행사에 확인하세요.",
+    ),
+    RiskClauseCode.INTEREST_PAYMENT_RISK: (
+        PaymentStage.BALANCE,
+        "입주 전후에 중도금 대출 이자 또는 대납이자 부담이 발생합니다.",
+        "입주 시 정산액과 입주 이후 본인 부담 이자 시작일을 확인하세요.",
+    ),
+    RiskClauseCode.LOAN_NOT_AVAILABLE: (
+        PaymentStage.INTERIM,
+        "이 사업장은 중도금 대출이 불가하다고 명시돼 있습니다.",
+        "중도금 전액의 회차별 직접 조달 계획을 확인하세요.",
+    ),
+    RiskClauseCode.TERMS_DIFFER_BY_HOUSING_TYPE: (
+        PaymentStage.INTERIM,
+        "중도금 대출 조건이 주택형별로 다를 수 있습니다.",
+        "선택한 주택형에 적용되는 대출 비율과 조건을 별도로 확인하세요.",
+    ),
+}
+
+
+def _risk_clause(
+    *,
+    code: RiskClauseCode,
+    origin: ValueOrigin,
+    evidence: list[Evidence],
+) -> RiskClause:
+    impact_stage, message, next_action = RISK_TEXT[code]
+    return RiskClause(
+        code=code,
+        impact_stage=impact_stage,
+        origin=origin,
+        message=message,
+        next_action=next_action,
+        evidence=evidence,
+    )
+
+
+def _supporting_evidence(items: list[Evidence], field: str) -> Evidence | None:
+    return next((item for item in items if item.field == field), None)
+
+
+def _ground_risk_clauses(
+    draft: ExtractionDraft,
+    pages: list[CandidatePage],
+    source_evidence: list[Evidence],
+) -> None:
+    clauses: list[RiskClause] = []
+    loan = draft.interim_loan
+
+    unavailable = _find(pages, NOT_AVAILABLE)
+    mediation = _find(pages, MEDIATION_NOT_GUARANTEED)
+    individual = _find(pages, INDIVIDUAL_REVIEW) or _find(pages, INDIVIDUAL_REVIEW_FINAL)
+    terms_by_type = _find(pages, TERMS_BY_TYPE)
+    interest_burden = _find(pages, INTEREST_BORROWER_BURDEN) or _find(
+        pages, INTEREST_SETTLEMENT
+    )
+
+    direct_matches = (
+        (
+            RiskClauseCode.LOAN_NOT_AVAILABLE,
+            unavailable,
+        ),
+        (
+            RiskClauseCode.LOAN_MEDIATION_NOT_GUARANTEED,
+            mediation if unavailable is None else None,
+        ),
+        (
+            RiskClauseCode.INDIVIDUAL_REVIEW_REQUIRED,
+            individual if unavailable is None else None,
+        ),
+        (
+            RiskClauseCode.INTEREST_PAYMENT_RISK,
+            interest_burden if unavailable is None else None,
+        ),
+        (
+            RiskClauseCode.TERMS_DIFFER_BY_HOUSING_TYPE,
+            terms_by_type if unavailable is None else None,
+        ),
+    )
+    for code, found in direct_matches:
+        if not found:
+            continue
+        page_number, match = found
+        field = f"/risk_clauses/{len(clauses)}"
+        clauses.append(
+            _risk_clause(
+                code=code,
+                origin=ValueOrigin.EXTRACTED,
+                evidence=[
+                    Evidence(field=field, page=page_number, raw_text=match.group("raw"))
+                ],
+            )
+        )
+
+    if (
+        unavailable is None
+        and interest_burden is None
+        and loan.interest_type == InterestType.DEFERRED_INTEREST
+    ):
+        interest_evidence = _supporting_evidence(
+            source_evidence, "/interim_loan/interest_type"
+        )
+        if interest_evidence is not None:
+            clauses.append(
+                _risk_clause(
+                    code=RiskClauseCode.INTEREST_PAYMENT_RISK,
+                    origin=ValueOrigin.EXTRACTED,
+                    evidence=[interest_evidence],
+                )
+            )
+
+    self_funding_evidence = _supporting_evidence(
+        source_evidence, "/interim_loan/self_funding_ratio"
+    ) or _supporting_evidence(source_evidence, "/interim_loan/self_funding_amount_manwon")
+    if self_funding_evidence is not None:
+        clauses.append(
+            _risk_clause(
+                code=RiskClauseCode.SELF_FUNDING_REQUIRED,
+                origin=ValueOrigin.EXTRACTED,
+                evidence=[self_funding_evidence],
+            )
+        )
+    else:
+        interim_ratio = draft.payment_schedule.interim_payment.total_ratio
+        arranged_ratio = loan.arranged_ratio
+        if (
+            interim_ratio is not None
+            and arranged_ratio is not None
+            and interim_ratio > arranged_ratio
+        ):
+            interim_evidence = _supporting_evidence(
+                source_evidence, "/payment_schedule/interim_payment"
+            )
+            arranged_evidence = _supporting_evidence(
+                source_evidence, "/interim_loan/arranged_ratio"
+            )
+            supports = [
+                item for item in (interim_evidence, arranged_evidence) if item is not None
+            ]
+            if len(supports) == 2:
+                clauses.append(
+                    _risk_clause(
+                        code=RiskClauseCode.SELF_FUNDING_REQUIRED,
+                        origin=ValueOrigin.DERIVED,
+                        evidence=supports,
+                    )
+                )
+
+    draft.risk_clauses = clauses
+
+
 def _ground_exception_flags(
     draft: ExtractionDraft,
     pages: list[CandidatePage],
@@ -1243,6 +1501,8 @@ def ground_ollama_draft(
         _append_evidence(evidence, item)
     for item in _ground_loan(grounded, pages):
         _append_evidence(evidence, item)
+    for item in _ground_settlement(grounded, pages):
+        _append_evidence(evidence, item)
     for item in _ground_costs(
         grounded,
         pages,
@@ -1252,5 +1512,6 @@ def ground_ollama_draft(
         _append_evidence(evidence, item)
     for item in _ground_exception_flags(grounded, pages):
         _append_evidence(evidence, item)
+    _ground_risk_clauses(grounded, pages, evidence)
     grounded.evidence = evidence
     return grounded

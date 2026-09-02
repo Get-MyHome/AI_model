@@ -9,6 +9,7 @@ from get_myhome_ai.models import (
     InterestType,
     IssueSeverity,
     LoanArrangementStatus,
+    LoanSettlementRequirement,
     PaymentComponent,
     ValidationIssue,
     ValidationReport,
@@ -169,6 +170,8 @@ def _extracted_value_paths(draft: ExtractionDraft, derived: set[str]) -> list[st
         "self_funding_amount_manwon",
         "interest_note",
         "prepay_requirement_ratio",
+        "settlement_deadline_text",
+        "extension_contingency_disclosed",
     ):
         if getattr(loan, field) is not None:
             paths.append(f"/interim_loan/{field}")
@@ -178,6 +181,10 @@ def _extracted_value_paths(draft: ExtractionDraft, derived: set[str]) -> list[st
         paths.append("/interim_loan/guarantee_provider")
     if loan.interest_type not in {InterestType.UNKNOWN, InterestType.NOT_APPLICABLE}:
         paths.append("/interim_loan/interest_type")
+    if loan.settlement_requirement not in {
+        LoanSettlementRequirement.NOT_STATED,
+    }:
+        paths.append("/interim_loan/settlement_requirement")
 
     for index, cost in enumerate(draft.additional_costs):
         base = f"/additional_costs/{index}"
@@ -410,6 +417,31 @@ def validate_draft(
             )
         )
 
+    if (
+        loan.arrangement_status == LoanArrangementStatus.NOT_AVAILABLE
+        and loan.settlement_requirement != LoanSettlementRequirement.NOT_APPLICABLE
+    ):
+        issues.append(
+            _issue(
+                IssueSeverity.ERROR,
+                "UNAVAILABLE_LOAN_WITH_SETTLEMENT_REQUIREMENT",
+                "중도금 대출 불가 상태인데 상환·대환 조건이 적용 가능한 상태입니다.",
+                "/interim_loan/settlement_requirement",
+            )
+        )
+    if (
+        loan.arrangement_status != LoanArrangementStatus.NOT_AVAILABLE
+        and loan.settlement_requirement == LoanSettlementRequirement.NOT_APPLICABLE
+    ):
+        issues.append(
+            _issue(
+                IssueSeverity.ERROR,
+                "SETTLEMENT_NOT_APPLICABLE_WITH_AVAILABLE_LOAN",
+                "중도금 대출 불가 근거 없이 상환·대환 조건이 적용 제외로 표시됐습니다.",
+                "/interim_loan/settlement_requirement",
+            )
+        )
+
     interim_dates = [
         item.due_date for item in schedule.interim_payment.installments if item.due_date is not None
     ]
@@ -471,6 +503,51 @@ def validate_draft(
             )
             continue
         valid_evidence_fields.add(evidence.field)
+
+    seen_risk_codes: set[str] = set()
+    for risk_index, risk in enumerate(draft.risk_clauses):
+        if risk.code.value in seen_risk_codes:
+            issues.append(
+                _issue(
+                    IssueSeverity.ERROR,
+                    "DUPLICATE_RISK_CLAUSE",
+                    "동일한 위험조항 코드가 중복됐습니다.",
+                    f"/risk_clauses/{risk_index}/code",
+                )
+            )
+        seen_risk_codes.add(risk.code.value)
+        for evidence_index, evidence in enumerate(risk.evidence):
+            evidence_path = f"/risk_clauses/{risk_index}/evidence/{evidence_index}"
+            page_text = page_map.get(evidence.page)
+            if page_text is None:
+                issues.append(
+                    _issue(
+                        IssueSeverity.ERROR,
+                        "RISK_EVIDENCE_PAGE_OUT_OF_RANGE",
+                        "위험조항 근거 페이지가 PDF 범위를 벗어났습니다.",
+                        evidence_path,
+                    )
+                )
+                continue
+            if not _json_pointer_exists(draft_document, evidence.field):
+                issues.append(
+                    _issue(
+                        IssueSeverity.ERROR,
+                        "RISK_EVIDENCE_PATH_NOT_FOUND",
+                        "위험조항 근거 필드가 실제 추출 결과 경로를 가리키지 않습니다.",
+                        evidence_path,
+                    )
+                )
+                continue
+            if _normalized_text(evidence.raw_text) not in _normalized_text(page_text):
+                issues.append(
+                    _issue(
+                        IssueSeverity.ERROR,
+                        "RISK_EVIDENCE_TEXT_NOT_FOUND",
+                        "위험조항 근거 문장을 해당 PDF 페이지에서 찾지 못했습니다.",
+                        evidence_path,
+                    )
+                )
 
     for path in _extracted_value_paths(draft, set(derived_fields)):
         if not _path_has_evidence(path, valid_evidence_fields):

@@ -7,6 +7,7 @@ from openai import AsyncOpenAI
 from get_myhome_ai.candidates import CandidatePage, format_candidate_document
 from get_myhome_ai.errors import ProviderError, ProviderNotConfiguredError
 from get_myhome_ai.models import ExtractionDraft
+from get_myhome_ai.providers.ollama_grounding import ground_ollama_draft
 from get_myhome_ai.settings import Settings
 
 
@@ -69,4 +70,9 @@ class OpenAIExtractor:
 
         if response.output_parsed is None:
             raise ProviderError("AI가 검증 가능한 구조화 결과를 반환하지 않았습니다.")
-        return response.output_parsed
+        return ground_ollama_draft(
+            response.output_parsed,
+            pages=pages,
+            unit_type_name=unit_type_name,
+            sale_price_manwon=sale_price_manwon,
+        )

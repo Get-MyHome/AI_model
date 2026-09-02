@@ -3,6 +3,7 @@ from __future__ import annotations
 from get_myhome_ai.models import (
     ExtractionDraft,
     LoanArrangementStatus,
+    LoanSettlementRequirement,
     PaymentComponent,
     ValueOrigin,
 )
@@ -85,4 +86,24 @@ def build_analysis_summary(draft: ExtractionDraft) -> str:
         and not loan.bank_names
     ):
         sentences.append("취급은행은 공고문에 공개되지 않았습니다.")
+
+    if (
+        loan.settlement_requirement
+        == LoanSettlementRequirement.REPAY_OR_CONVERT_TO_MORTGAGE
+    ):
+        deadline = loan.settlement_deadline_text or "입주 전"
+        sentences.append(
+            f"공고문상 중도금 대출은 {deadline} 상환하거나 담보대출로 전환해야 합니다."
+        )
+    elif (
+        loan.arrangement_status != LoanArrangementStatus.NOT_AVAILABLE
+        and loan.settlement_requirement == LoanSettlementRequirement.NOT_STATED
+    ):
+        sentences.append("입주 시 중도금 대출의 상환·대환 조건은 공고문에서 확인하지 못했습니다.")
+
+    if loan.extension_contingency_disclosed is True:
+        sentences.append(
+            "공고문에는 대출기간 만료 시 연장 절차 가능성이 언급돼 있으나 "
+            "연장이 보장된 것은 아닙니다."
+        )
     return " ".join(sentences)

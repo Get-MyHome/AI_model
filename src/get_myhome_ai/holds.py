@@ -10,6 +10,7 @@ from get_myhome_ai.models import (
     InterestType,
     IssueSeverity,
     LoanArrangementStatus,
+    LoanSettlementRequirement,
     ValidationReport,
 )
 
@@ -194,6 +195,11 @@ def derive_holds(
         and loan.interest_type == InterestType.UNKNOWN
     ):
         codes.append(HoldReasonCode.INTEREST_TERMS_UNKNOWN)
+    if (
+        loan.arrangement_status != LoanArrangementStatus.NOT_AVAILABLE
+        and loan.settlement_requirement == LoanSettlementRequirement.NOT_STATED
+    ):
+        codes.append(HoldReasonCode.BALANCE_CONVERSION_UNCERTAIN)
 
     flags = set(draft.exception_flags)
     if ExceptionFlag.TERMS_DIFFER_BY_TYPE in flags and unit_type_name is None:
@@ -231,6 +237,7 @@ def derive_analysis_status(validation: ValidationReport, holds: list[Hold]) -> A
         HoldReasonCode.LOAN_ARRANGEMENT_ONLY,
         HoldReasonCode.SELF_FUNDING_SCHEDULE_UNKNOWN,
         HoldReasonCode.INTEREST_TERMS_UNKNOWN,
+        HoldReasonCode.BALANCE_CONVERSION_UNCERTAIN,
         HoldReasonCode.UNIT_SELECTION_REQUIRED,
         HoldReasonCode.ADDITIONAL_COST_UNKNOWN,
         HoldReasonCode.TABLE_REVIEW_REQUIRED,

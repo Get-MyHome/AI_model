@@ -28,6 +28,7 @@ def test_holds_and_summary_are_deterministic(golden_cases) -> None:
         HoldReasonCode.LOAN_ARRANGEMENT_ONLY,
         HoldReasonCode.BANK_NOT_DISCLOSED,
         HoldReasonCode.SELF_FUNDING_SCHEDULE_UNKNOWN,
+        HoldReasonCode.BALANCE_CONVERSION_UNCERTAIN,
     ]
     assert derive_analysis_status(report, first) == "PARTIAL"
     assert build_analysis_summary(draft) == build_analysis_summary(draft)

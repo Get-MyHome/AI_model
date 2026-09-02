@@ -91,11 +91,61 @@ v0.2는 모든 납부를 비율로 표현하고 추가비용에 납부 구간 �
   "guarantee_provider": null,
   "interest_type": "DEFERRED_INTEREST",
   "interest_note": "입주 시 대납이자 정산",
-  "prepay_requirement_ratio": 0.10
+  "prepay_requirement_ratio": 0.10,
+  "settlement_requirement": "REPAY_OR_CONVERT_TO_MORTGAGE",
+  "settlement_deadline_text": "입주 시 중도금 대출 원금을 상환하거나 담보대출로 전환",
+  "extension_contingency_disclosed": false
 }
 ```
 
 `arranged_ratio`/`arranged_amount_manwon`은 **공고문상 사업장 대출 알선 범위·상한**이며 개인 심사 승인비율이 아닙니다. `self_funding_origin=EXTRACTED`는 공고문이 직접 납부·자납을 명시한 경우이고, `DERIVED`는 중도금에서 알선 상한을 뺈 결과인 **사업장 알선 외 별도 조달 구간**입니다. 후자를 “반드시 현금으로 납부”라고 확정하지 않습니다.
+
+`settlement_requirement`는 입주·잔금 시점의 기존 중도금 대출 처리 의무입니다.
+
+| 값 | 뜻 |
+| --- | --- |
+| `REPAY_OR_CONVERT_TO_MORTGAGE` | 원금을 상환하거나 담보대출로 전환해야 함 |
+| `REPAY_REQUIRED` | 원금 상환이 명시됨 |
+| `CONVERT_TO_MORTGAGE_REQUIRED` | 담보대출 전환이 명시됨 |
+| `CONTINUE_EXPLICITLY_ALLOWED` | 기존 중도금 대출의 계속 이용이 명시적으로 허용됨 |
+| `NOT_STATED` | 공고문에 처리 조건이 없음 |
+| `NOT_APPLICABLE` | 사업장 중도금 대출 자체가 불가함 |
+
+단순히 “대출 연장 시 추가 이자는 계약자 부담”이라는 문장이 있다고 해서 기존 대출이
+입주 후에도 계속된다고 해석하지 않습니다. 그런 문장은
+`extension_contingency_disclosed=true`로만 보존하고, 상환·전환 조건이 없으면
+`settlement_requirement=NOT_STATED`와 HOLD를 유지합니다.
+
+사용자 자금에 영향을 주는 위험조항은 자유 요약이 아니라 고정 코드로 반환합니다.
+
+```json
+{
+  "risk_clauses": [
+    {
+      "code": "LOAN_MEDIATION_NOT_GUARANTEED",
+      "impact_stage": "INTERIM",
+      "origin": "EXTRACTED",
+      "message": "중도금 대출 알선은 예정사항이며 실행을 보장하지 않습니다.",
+      "next_action": "사업주체 또는 취급 금융기관에 실제 실행 가능 여부를 확인하세요.",
+      "evidence": [
+        {
+          "field": "/risk_clauses/0",
+          "page": 7,
+          "raw_text": "대출 알선이 불가할 수 있으며 이는 사업주체의 의무사항이 아님"
+        }
+      ]
+    }
+  ]
+}
+```
+
+지원 코드는 `LOAN_MEDIATION_NOT_GUARANTEED`, `INDIVIDUAL_REVIEW_REQUIRED`,
+`SELF_FUNDING_REQUIRED`, `INTEREST_PAYMENT_RISK`, `LOAN_NOT_AVAILABLE`,
+`TERMS_DIFFER_BY_HOUSING_TYPE`입니다. `SELF_FUNDING_REQUIRED`가 계산으로 파생된 경우에는
+중도금 총비율과 알선 상한 두 근거를 모두 연결합니다. 보유 27건에는
+`TERMS_DIFFER_BY_HOUSING_TYPE` 양성 사례가 없으므로 이 코드는 규칙과 음성 테스트만 있고
+실제 양성 성능은 주장하지 않습니다. `message`와 `next_action`은 LLM 자유 생성물이 아니라
+코드별 고정 템플릿입니다.
 
 추가비용은 주택형과 여러 납부 회차를 보존합니다. `included_in_sale_price=true`인 비용은 별도 필요자금에 더하지 않습니다. `required=false`인 선택비용도 사용자가 선택하기 전에는 합산하지 않습니다.
 
@@ -118,4 +168,6 @@ v0.2는 모든 납부를 비율로 표현하고 추가비용에 납부 구간 �
 - 납부일은 오름차순이고 잔금일은 마지막 중도금일보다 빠르지 않음
 - EXTRACTED 값은 실제 페이지 원문 근거가 있음
 - DERIVED 값은 계산식과 입력 근거가 있음
+- 상환·전환 조건과 위험조항은 실제 페이지 원문 근거가 있음
+- 동일 위험코드가 중복되지 않고, 파생 위험조항은 모든 입력 근거를 연결함
 - 선택비용과 분양가 포함 비용은 기본 합산에서 제외

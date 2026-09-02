@@ -1,0 +1,33 @@
+{
+  "scope": "27 real announcement PDFs; deterministic settlement and risk labels",
+  "reference": "manual page-by-page review on 2026-09-02",
+  "model_used_for_this_measurement": false,
+  "document_exact_matches": 27,
+  "document_count": 27,
+  "label_accuracy": 1.0,
+  "correct_labels": 189,
+  "total_labels": 189,
+  "evidence_quote_accuracy": 1.0,
+  "evidence_quote_correct": 89,
+  "evidence_quote_total": 89,
+  "settlement_counts": {
+    "REPAY_OR_CONVERT_TO_MORTGAGE": 25,
+    "NOT_STATED": 1,
+    "NOT_APPLICABLE": 1
+  },
+  "risk_counts": {
+    "LOAN_MEDIATION_NOT_GUARANTEED": 26,
+    "INDIVIDUAL_REVIEW_REQUIRED": 26,
+    "SELF_FUNDING_REQUIRED": 6,
+    "INTEREST_PAYMENT_RISK": 25,
+    "LOAN_NOT_AVAILABLE": 1,
+    "TERMS_DIFFER_BY_HOUSING_TYPE": 0
+  },
+  "known_limits": [
+    "This measures deterministic post-processing against manual labels, not Qwen model accuracy.",
+    "TERMS_DIFFER_BY_HOUSING_TYPE has no positive document in the held 27-PDF sample.",
+    "Evidence semantic quality beyond literal page-quote presence still requires human review.",
+    "Announcement-versus-bank-guidance comparison is not validated without real document pairs."
+  ],
+  "reproduce": "python scripts/evaluate_risk_settlement.py"
+}
