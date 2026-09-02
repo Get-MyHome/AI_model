@@ -1,180 +1,101 @@
 # Get-MyHome AI
 
-Get-MyHome은 청약 당첨 이후 계약금·중도금·잔금 사이의 자금 단절 위험을 사전에 진단합니다. 이 저장소는 그 진단을 바꾸는 공고문 금융조건과 불확실성을 페이지 근거와 함께 구조화하는 **AI 증거 계층**입니다.
+Get-MyHome은 청약 당첨 이후 계약금·중도금·잔금 사이에서 발생하는 **최초 자금 단절 시점과 원인**을 진단합니다. 이 저장소는 공공 API에 없는 공고문 금융조건을 PDF에서 찾아 페이지 근거와 함께 구조화하는 AI 계층입니다.
 
-> 중도금 60%는 대출 60%가 아닙니다. AI가 공고문상 사업장 대출 알선 상한·알선 외 별도 조달 구간·확정도를 읽으면 backend의 최초 자금 단절 구간과 부족액 판정이 달라집니다. 알선 상한은 개인 승인액을 뜻하지 않습니다.
+> 중도금 납부비율 60%가 개인의 대출 승인비율 60%를 뜻하지는 않습니다.
 
-## 역할 경계
+## 핵심 기능
 
-1. `crawler`가 청약홈에서 공고문을 수집해 S3에 저장하고 fresh pre-signed URL을 backend에 반환합니다.
-2. backend가 공고번호·PDF URL에 선택 주택형 ID·명칭·최고 분양가를 결합해 AI를 호출합니다. 개발 중에는 로컬 PDF를 동일한 파이프라인에 입력할 수 있습니다.
-3. AI는 문서 사실과 근거를 반환합니다. backend는 사용자 조건과 검수된 문서 데이터를 결합해 기존 자금판정을 계산합니다.
-4. 자동 검증을 통과해도 `AUTO_EXTRACTED`이며, 사람 검수 후 `REVIEWED`가 된 결과만 backend 자금판정에 사용합니다.
-5. 선택형 `POST /api/funding-stress`는 backend가 이미 계산한 경로별 한도를 받아 중도금 최소 필요비율·안전마진·비율별 부족 구간을 재현하는 AI 서버 측 advisory입니다. 기존 backend 로직은 수정하지 않습니다.
+- 계약금·중도금·잔금의 비율, 금액, 회차와 납부일 추출
+- 중도금 대출 알선 상태, 알선 상한, 별도 조달 비율과 이자 방식 추출
+- 추가비용, 입주 시 대출 상환·전환 조건과 금융 위험조항 분류
+- 모든 판단 필드에 PDF 페이지와 원문 근거 연결
+- 누락·충돌·불확실한 정보의 `null + HOLD` 처리
+- 자동 검증과 사람 검수를 분리한 `AUTO_EXTRACTED → REVIEWED` 흐름
 
-청약홈 페이지를 찾거나 크롤링하는 코드는 이 저장소에 두지 않습니다.
+## 시스템 경계
 
-## 안전 원칙
+```text
+crawler                AI_model                         backend
+공고문 수집·PDF 저장  → 문서 사실·근거 추출 및 검수  → 사용자 조건 기반 자금판정
+```
 
-- 모든 비율은 총 분양가 대비 0~1 값입니다.
-- 공고에 비율 대신 정액이 있으면 임의 환산하지 않고 정액으로 보존합니다.
-- 없는 값은 0이 아니라 `null`과 HOLD로 표현합니다.
-- LLM은 요약·조언·판정을 만들지 않습니다. 안내문과 요약은 검증값 기반 고정 템플릿입니다.
-- 입주 시 중도금 대출 상환·담보대출 전환 조건과 사용자 자금에 영향을 주는 위험조항도
-  페이지 근거와 고정 코드로 반환합니다.
-- AI의 `analysis_status`는 문서 분석 상태입니다. 사용자의 최종 `funding_status`와 동일하지 않습니다.
-- 추출값은 PDF 페이지와 실제 원문 근거가 있어야 합니다.
-- 발코니 확장비 등 선택비용은 사용자 선택 전 자동 합산하지 않습니다.
+- AI는 PDF에 적힌 사실과 불확실성만 구조화합니다.
+- backend는 검수된 결과와 사용자 조건·금융규칙을 결합해 최종 부족액과 상태를 계산합니다.
+- LLM은 대출 승인 여부, 사용자 부족액 또는 최종 금융 조언을 생성하지 않습니다.
+- 모든 비율은 총 분양가 대비 `0~1` 값이며, 알선 상한은 개인 승인액이 아닙니다.
+- 원문에 없는 값은 0으로 바꾸거나 추정하지 않습니다.
+- 안내문과 요약문은 검증값 기반 고정 템플릿입니다.
 
-## 먼저 읽을 문서
+## 설치와 실행
 
-- `docs/ARCHITECTURE.md`: crawler·AI·backend 책임 경계와 처리 흐름
-- `docs/EXTRACTION_SPEC_v0.3.md`: 정본 요청·응답 규격
-- `docs/HOLD_CODES.md`: 고정 안내문과 다음 행동
-- `docs/GOLDEN_SET_v0.3.md`: 실제 공고문 3건의 수작업 정답
-- `docs/BACKEND_COMPATIBILITY.md`: 현재 Java DTO와 정본 계약의 차이
-- `docs/FUNDING_STRESS_API.md`: 검수본 기반 중도금 임계비율·스트레스 advisory API
-
-## 현재 개발 방식
-
-배치 명령이 본체이고 HTTP API는 동일 파이프라인을 호출하는 얇은 선택 계층입니다.
-
-- 개발·평가: 로컬 PDF 입력
-- 운영 연동: crawler가 만든 S3 pre-signed URL 입력
-- 자동 추출본: `artifacts/auto/`
-- 사람 검수 완료본: `artifacts/reviewed/`(PDF SHA-256·공고·주택형·분양가로 잠금)
-
-## 설치
-
-Python 3.12와 `pdftotext`(Ubuntu 패키지 `poppler-utils`)가 필요합니다.
+Python 3.12, `pdftotext`와 Ollama가 필요합니다.
 
 ```bash
 python -m pip install -e '.[dev]'
-```
-
-기본 provider는 로컬 Ollama의 `qwen3.5:9b`입니다. 사람이 원본 PDF를 대조해 잠근 24개 공고문을 독립 재실행한 결과, 평가 범위의 핵심 라벨 260/260이 일치했고 문서별 핵심 필드·안전성 판정도 각각 24/24가 일치했습니다. 공고문 전체 검수에서 값이 미기재된 것으로 확인된 라벨 4개는 모두 값을 생성하지 않고 안전하게 기권했습니다. 이 수치는 주택형별 금액·추가비용·은행명·보증기관을 제외한 문서 단위 핵심 필드에만 적용되며, 근거 문장의 의미적 정확도는 아직 별도 사람 채점이 없어 `NOT_EVALUATED`입니다. 따라서 이를 “27건 전체 필드 정확도 100%” 또는 “근거 정확도 100%”라고 표현하지 않습니다. 모델 출력에는 고정 근거 검증과 사람 검수를 계속 적용합니다.
-
-별도로 상환·전환 조건과 6개 위험조항의 **고정 후처리 규칙**을 실제 공고문 27건에
-전수 대조했습니다. 문서별 정확 일치 27/27, 참조 라벨 189/189, 반환된 위험조항 원문이
-해당 PDF 페이지에 실제 존재하는지 89/89를 확인했습니다. 이는 Qwen 모델 정확도가 아니라
-사람이 만든 참조 라벨 대비 결정론적 규칙 검증 결과입니다. 보유 표본에
-`TERMS_DIFFER_BY_HOUSING_TYPE` 양성 문서가 없어 해당 코드의 실제 양성 성능은 평가하지
-못했습니다. 상환·대환 근거는 별도로 51/51이 지정 페이지에 존재함을 확인했으며,
-위험조항 89건과 합쳐서 하나의 정확도 수치로 표현하지 않습니다. 재현 명령은
-`python scripts/evaluate_risk_settlement.py`입니다.
-
-전수감사에서 `bank_names`, `guarantee_provider`, 전체 범위의 `additional_costs`는 아직
-풀필드 성능을 측정하지 못했습니다. 이 값들은 임계비율 계산 근거로 쓰지 않고, 필수
-추가비용은 주택형·금액·납부 구간·필수 여부를 사람이 확인한 건만 합산합니다.
-
-```bash
 ollama pull qwen3.5:9b
 OLLAMA_HOST=127.0.0.1:11434 OLLAMA_NUM_PARALLEL=1 ollama serve
+cp .env.example .env
 ```
 
-`.env.example`을 `.env`로 복사해 실행 환경을 설정합니다. OpenAI는 선택형 유료 provider이며, 키가 없다고 fixture로 자동 전환되지 않습니다.
-
-## 로컬 PDF 배치 분석
-
-개발 중에는 crawler를 기다리지 않고 이미 확보한 PDF를 같은 파이프라인에 넣습니다.
+로컬 PDF 분석:
 
 ```bash
 get-myhome-ai analyze-file \
   --complex-id 2026000372 \
-  --pdf /path/to/2026000372_7.pdf \
+  --pdf /path/to/announcement.pdf \
   --unit-type-name 59A \
   --sale-price-manwon 108650
 ```
 
-결과는 기본적으로 `artifacts/auto/{complex_id}.json`, 검수표는 같은 위치의 `*.review.md`에 저장됩니다.
+자동 추출 JSON과 검수표는 `artifacts/auto/`에 생성됩니다. PDF 원문을 대조해 승인된 `REVIEWED` 결과만 사용자 자금판정에 사용할 수 있습니다.
 
-## crawler URL 분석
-
-운영 입력은 crawler가 만든 10분짜리 S3 pre-signed URL입니다. AI는 URL을 받자마자 PDF만 수령하며 청약홈을 직접 크롤링하지 않습니다.
-
-```bash
-get-myhome-ai analyze-url \
-  --complex-id 2026000372 \
-  --pdf-url 'https://crawler-bucket.example/temporary-signed-url' \
-  --unit-type-name 59A \
-  --sale-price-manwon 108650
-```
-
-## 사람 검수
-
-자동 검증 통과와 사람 검수 완료를 구분합니다. PDF 원문을 직접 대조한 후에만 다음 명령을 실행합니다.
-
-```bash
-get-myhome-ai review \
-  --input artifacts/auto/2026000372.json \
-  --pdf /path/to/2026000372_7.pdf \
-  --output artifacts/reviewed/2026000372.json \
-  --reviewer 안지홍 \
-  --confirm-source-reviewed
-```
-
-## 실제 PDF 골든셋 회귀 테스트
-
-PDF는 저장소에 커밋하지 않습니다. 세 파일을 별도 디렉터리에 둔 뒤 실행합니다.
-
-```bash
-get-myhome-ai --provider fixture evaluate \
-  --pdf-dir /path/to/golden-pdfs \
-  --output artifacts/evaluation/golden-fixture-report.json
-```
-
-fixture 평가는 PDF 수령·페이지 추출·후보 선택·고정 검증·근거 연결을 재현하는 테스트이지 LLM 정확도 측정이 아닙니다. 실제 모델 평가는 `AI_PROVIDER=ollama`(기본 `qwen3.5:9b`) 또는 선택한 provider로 같은 명령을 실행해 별도로 측정합니다.
-
-## 선택형 HTTP API
-
-배치 코어가 본체이며, backend가 동기 호출을 원할 때만 얇은 API를 띄웁니다.
+## HTTP API
 
 ```bash
 get-myhome-ai serve --host 0.0.0.0 --port 9000
 ```
 
-- `POST /api/analyze`: v0.3 정본 응답
-- `POST /api/analyze/legacy`: 현재 Java DTO 임시 호환 응답
-- `POST /api/funding-stress`: REVIEWED 검수본+경로 한도 기반 advisory 스트레스
-- `GET /health`: 프로세스 생존 확인
-- `GET /ready`: `pdftotext`·임시 디렉터리·Provider·인증·PDF 호스트 허용 목록 확인
+| Method | Path | 설명 |
+| --- | --- | --- |
+| `POST` | `/api/analyze` | PDF 금융조건 분석 |
+| `POST` | `/api/funding-stress` | REVIEWED 검수본 기반 선택형 스트레스 분석 |
+| `GET` | `/health` | 프로세스 상태 확인 |
+| `GET` | `/ready` | 실행 준비 상태 확인 |
 
-현재 backend 연결 시험용 외부 주소는 다음과 같습니다.
+외부 분석 요청은 `Authorization: Bearer <AI_API_KEY>` 헤더를 사용하며 실제 키는 저장소에 커밋하지 않습니다.
 
-```text
-https://server.tailb23d4f.ts.net:10000/api/analyze
+`POST /api/analyze` 요청 예시:
+
+```json
+{
+  "complex_id": "2026000372",
+  "pdf_url": "https://example.com/fresh-presigned-url",
+  "unit_type_id": "01",
+  "unit_type_name": "059.9883A",
+  "sale_price_manwon": 108650
+}
 ```
 
-API 키는 저장소에 커밋하지 않고 `.local/runtime/get-myhome-ai.env`에만 둡니다. 팀에는 채팅이나
-GitHub가 아닌 별도 비밀 전달 채널로 공유합니다.
-
-외부 연결 시 `.env`에 32자 이상의 무작위 `AI_API_KEY`를 설정하고 backend가 `Authorization: Bearer <key>` 헤더를 보내야 합니다. Ollama 포트 `11434`는 외부에 열지 않고 loopback으로 유지합니다. 운영에서는 `ENABLE_DOCS=false`, 정확한 S3 버킷 호스트만 `PDF_ALLOWED_HOSTS`에 넣습니다. 인증이나 호스트 목록이 없으면 `/ready`는 503을 반환하며 분석 API도 무인증으로 열리지 않습니다.
-
-```bash
-curl -X POST 'https://server.tailb23d4f.ts.net:10000/api/analyze' \
-  -H 'Authorization: Bearer <key>' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "complex_id":"2026000372",
-    "pdf_url":"https://<exact-s3-host>/<fresh-presigned-url>",
-    "unit_type_id":"01",
-    "unit_type_name":"59A",
-    "sale_price_manwon":108650
-  }'
-```
-
-서버는 먼저 PDF를 수령해 SHA-256을 계산합니다. 동일한 PDF SHA-256·공고번호·주택형 ID·분양가의 `REVIEWED` 검수본이 있으면 Qwen을 다시 호출하지 않고 그 검수본을 반환합니다. 없으면 `AUTO_EXTRACTED`를 반환하며 backend는 사용자 계산을 HOLD합니다. 단순히 `review_status` 문자열만 바꾼 데이터는 사용할 수 없고 검수자·검수시각·검증 통과·정확한 소스/대상 키가 모두 필요합니다. 신규 분석의 backend read timeout은 310초 이상이어야 하며, 10분짜리 PDF URL 자체는 캐시하지 않습니다.
-
-주택형을 지정할 때 세 target 필드는 전부 보내야 하며, backend의 `059.9883A`
-표기는 AI 내부에서 PDF 약식명 `59A`로 정규화합니다. 기존 backend 저장소와
-판정 로직은 이 AI 서버 변경에서 수정하지 않았습니다.
+문서 공통 분석에는 `complex_id`, `pdf_url`만 필요합니다. 주택형을 지정할 때는 나머지 세 필드를 모두 보내야 하며 금액 단위는 만 원입니다. 응답은 납부 일정, 중도금 대출조건, 추가비용, 위험조항, HOLD, 근거와 검수 상태를 포함합니다.
 
 ## 검증
+
+Qwen3.5 독립 재실행은 공고문 24건의 범위 한정 핵심 라벨 260개를, 결정론적 위험·상환 규칙은 공고문 27건의 참조 라벨 189개를 대조했습니다. 이 결과는 명시된 평가 범위에만 적용되며 전체 필드 정확도 또는 근거의 의미적 정확도 100%를 뜻하지 않습니다.
+
+자세한 범위와 한계는 [전수 검증 보고서](docs/FULL_27_AUDIT_2026-09-02.md)를 참고하세요.
 
 ```bash
 ruff check .
 python -m pytest
 python -m compileall -q src tests
+python scripts/evaluate_risk_settlement.py
 ```
 
-실제 OpenAI 호출은 API 키가 없어 자동 테스트에 포함하지 않습니다. Structured Outputs도 값의 사실성을 보장하지 않으므로, 모델 출력 뒤의 고정 검증과 사람 검수를 생략하면 안 됩니다.
+## 문서
+
+- [아키텍처](docs/ARCHITECTURE.md)
+- [추출 명세 v0.3](docs/EXTRACTION_SPEC_v0.3.md)
+- [HOLD 코드](docs/HOLD_CODES.md)
+- [골든셋](docs/GOLDEN_SET_v0.3.md)
+- [스트레스 분석 API](docs/FUNDING_STRESS_API.md)
