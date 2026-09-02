@@ -3,29 +3,61 @@
 ## Current state
 
 - Batch-first PDF extraction and the thin authenticated FastAPI endpoint are implemented.
-- The authenticated API and local Ollama runtime are enabled as lingering user services. Tailscale Funnel exposes only the API through a dedicated HTTPS port; existing Tailscale routes remain intact. Runtime units and the mode-600 secret environment file live under ignored `.local/runtime/` paths.
-- A historical public-edge end-to-end request using a real 2026000376 announcement completed with Qwen3 8B; that reviewed artifact keeps its original model provenance. The current public runtime and default provider have been restarted with local Ollama `qwen3.5:9b`. The public URL and API key must not be committed or copied into logs.
-- The final independent `qwen3.5:9b` source-locked run completed for all 24 reference documents: 260/260 compared core labels matched, 24/24 documents were exact on scored fields, 24/24 were safety-exact, and all 4 not-stated labels were safe abstentions. This covers only the labeled document-level core fields. Evidence semantic accuracy remains `NOT_EVALUATED`, and this must not be described as 27-document full-field accuracy.
-- Canonical v0.3 uses snake_case, sale-price-relative ratios, fixed amounts, exact page evidence, deterministic HOLDs/summaries, and separate AUTO_EXTRACTED/REVIEWED artifacts.
-- HOLDs now distinguish blocking document uncertainty from non-blocking personal-review advisories.
-- Backend unit types such as `059.9883A` normalize to PDF labels such as `59A`; MVP uses the backend unit-type maximum sale price as a conservative basis.
-- The 2026000372 HTTP end-to-end run reproduced 10% contract / 60% interim / 40% arranged loan / 20% self funding / 30% balance and passed structural, arithmetic, and evidence validation.
-- The 2026000376 backend-shaped input `01 / 084.7506A / 58660` normalized to `84A` and produced the correct fixed 1,000-manwon interim payment and NOT_AVAILABLE loan state.
-- The 24-document source-locked core reference labels and final Qwen3.5 evaluation are complete. The publishable evaluator report is `artifacts/evaluation/remaining-24-qwen3.5-9b-final-v4.json` (ignored runtime artifact). Do not claim a 27-document full-field metric or semantic evidence accuracy.
-- The local `codex/ai-v03-integration` backend branch implements canonical v0.3 ingestion and first-discontinuity calculation, but GitHub `origin/develop` remains legacy until those six commits are merged. Neither branch may multiply `arranged_ratio=0.40` by the interim 0.60 again.
-- Full verification after the final grounding fix passed: Ruff format/lint, Python compile, 99 pytest tests, 24-document reference validation (260 scored labels, 4 pending labels, 409 source-checked evidence fragments), and `git diff --check`.
-- The verified AI repository state is committed locally. Push to the organization repository is blocked by HTTP 403 for the current GitHub account, and the remote AI repository still has no `main` ref. A complete-history handoff bundle is stored at `/mnt/20t/AI_해커톤/get-myhome-ai-complete.bundle`; refresh and verify it after the final commit when the history changes.
+- The local Ollama runtime uses `qwen3.5:9b`. Ollama remains loopback-only; the API is exposed through
+  Tailscale Funnel at `https://server.tailb23d4f.ts.net:10000/api/analyze`.
+- Runtime units and the mode-600 secret environment file live under ignored `.local/runtime/` paths.
+  Never commit or print the API key, pre-signed URLs, or full PDF contents.
+- Canonical JSON stays additive schema `v0.3`; extractor version is `0.2.0`.
+- Extractor 0.2 adds evidence-grounded interim-loan settlement requirements and deterministic funding
+  risk clauses. Unknown settlement terms produce `BALANCE_CONVERSION_UNCERTAIN`; missing facts are
+  never converted to zero.
+- LLMs extract candidate facts only. Settlement/risk classification, HOLDs, summaries, validation,
+  derived self-funding, and cross-document comparison are deterministic.
+- Announcement-versus-bank-guidance comparison has a tested internal core but no public endpoint. It
+  must remain labeled `NOT_VALIDATED_ON_BANK_GUIDANCE` until real bank-guide pairs are manually labeled.
+- A public authenticated end-to-end request against the real 2026000372 ApplyHome PDF completed on
+  extractor 0.2/Qwen3.5. It returned 10% contract, 60% interim, 40% arranged, 20% uncovered,
+  `REPAY_OR_CONVERT_TO_MORTGAGE`, four risk clauses, and `validation.passed=true`.
+- The final independent Qwen3.5 source-locked run covers 24 reference PDFs: 260/260 compared core
+  labels, 24/24 exact documents, 24/24 field safety, and 4/4 safe abstentions. This excludes unit-level
+  amounts/additional-costs/banks/guarantors and does not measure semantic evidence accuracy.
+- Separate page-by-page labels for settlement and six deterministic risk classes cover all 27 PDFs:
+  27/27 document exact matches, 189/189 labels, and 89/89 literal evidence-page quote checks. This is
+  deterministic post-processing accuracy, not Qwen accuracy. The corpus has zero positive
+  `TERMS_DIFFER_BY_HOUSING_TYPE` examples.
+- Full AI verification at commit `50f556b`: Ruff passed, compileall passed, 110 pytest tests passed, and
+  `python scripts/evaluate_risk_settlement.py` exited 0.
+- The backend integration worktree branch `codex/ai-v03-integration` now ingests extractor 0.2
+  settlement/risk fields and includes arranged interim-loan principal at balance when repayment or
+  refinancing is required. Unknown settlement is conservatively carried and blocking-HOLDed.
+- Backend commit `56a3db9` passed `./gradlew clean build` with JDK 17: 121 tests, 0 failures/errors,
+  one intentionally skipped opt-in live E2E test.
+- Both organization pushes are blocked by GitHub HTTP 403 for the current account.
 
-## Touched files
+## Handoff artifacts
 
-- Runtime: `src/get_myhome_ai/`
-- Contracts/docs: `docs/`, `README.md`, `.env.example`
-- Golden labels and regression tests: `tests/`
-- Local actual-model artifacts: ignored Qwen3 8B, Qwen3.5 regression, and remaining-24 evaluation outputs under `artifacts/`.
+- AI patch: `/mnt/20t/AI_해커톤/0001-feat-extract-settlement-and-funding-risk-clauses.patch`
+- AI bundle: `/mnt/20t/AI_해커톤/get-myhome-ai-50f556b.bundle`
+- Backend patch: `/mnt/20t/AI_해커톤/backend-ai-v03-integration.patch`
+- Backend bundle: `/mnt/20t/AI_해커톤/backend-ai-v03-integration-56a3db9.bundle`
 
-## Next step
+## Claims and boundaries
 
-- Preserve the final 24-document metric scope in all handoffs: 260 compared document-level core labels, 4 safe abstentions, no unit-specific/full-v0.3 or semantic-evidence claim.
-- The external endpoint is already running but is intentionally limited to the verified ApplyHome static host. Obtain one fresh crawler S3 `pdf_url`, add only its exact hostname to `PDF_ALLOWED_HOSTS`, and then verify crawler → backend → AI end to end.
-- Merge the tested local backend integration branch into the remote repository. Direct push currently fails with HTTP 403, so the backend owner must apply `/mnt/20t/AI_해커톤/backend-ai-v03-integration.patch` or merge equivalent commits.
-- Give the updated `docs/BACKEND_HANDOFF.md` and `docs/FRONTEND_HANDOFF.md` to the owners. Grant push access or import the complete-history bundle so the verified AI history can become the remote `main` branch.
+- Do not claim “27-PDF full-field Qwen accuracy 100%” or “semantic evidence accuracy 100%.”
+- Do not call the project-arranged ratio a personal approved-loan ratio.
+- Do not multiply `arranged_ratio=0.40` by interim ratio `0.60`; both are sale-price-relative.
+- For 2026000372, full 60% interim lending still creates a 67,785-manwon balance shortfall because the
+  65,190-manwon principal must be repaid/refinanced. The actual 40% case first breaks at interim by
+  21,730 and later has a 46,055 balance gap. Do not compare different-stage gaps as a simple delta.
+- Only `REVIEWED` artifacts with exact PDF/complex/unit/price/extractor-version keys may drive user
+  funding calculations. Current extractor-0.2 public responses remain `AUTO_EXTRACTED` until a human
+  checks the generated review sheet against the PDF.
+
+## Remaining external/human steps
+
+- Obtain one fresh crawler S3 URL, add only its exact bucket hostname to `PDF_ALLOWED_HOSTS`, and run
+  crawler → backend → AI. The public API itself and a real ApplyHome URL are already verified.
+- A repository owner must import/apply the handoff artifacts or grant write access; current pushes fail
+  with 403.
+- A human must approve extractor-0.2 review sheets before backend production use.
+- Real bank loan-guide PDF pairs are required before enabling document-change detection publicly.
