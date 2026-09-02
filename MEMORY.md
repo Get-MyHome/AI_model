@@ -33,15 +33,17 @@
   27/27 document exact matches, 189/189 labels, and 89/89 literal evidence-page quote checks. This is
   deterministic post-processing accuracy, not Qwen accuracy. The corpus has zero positive
   `TERMS_DIFFER_BY_HOUSING_TYPE` examples.
-- Full AI verification on 2026-09-02: Ruff passed, compileall passed, 129 pytest tests passed, and
+- Full AI verification on 2026-09-02: Ruff passed, compileall passed, 130 pytest tests passed, and
   `python scripts/evaluate_risk_settlement.py` passed all 27 source hashes, 189/189 deterministic
   labels, 89/89 risk quotes, and 51/51 settlement quotes.
 - Review approval ignores editable `derived_fields`, re-grounds deterministic metadata against the
   exact PDF, and regenerates validation, HOLDs, status, and summary before setting `REVIEWED`.
 - Backend is a strict no-edit boundary. It remains the production funding/verdict SSOT; AI funding
   stress is additive advisory output only.
-- The Get-MyHome organization push is blocked by GitHub HTTP 403 for account `soccz` until the repo
-  owner grants Write access or installs an AI_model-scoped deploy key.
+- The AI_model deploy key is active and pushes to the Get-MyHome organization repository succeed.
+- Production `PDF_ALLOWED_HOSTS` contains both exact crawler bucket forms: the regional
+  `getmyhome-pdfs-758862546581.s3.ap-northeast-2.amazonaws.com` host and the global
+  `getmyhome-pdfs-758862546581.s3.amazonaws.com` host. Never replace these with a broad S3 wildcard.
 
 ## Handoff artifacts
 
@@ -64,9 +66,7 @@
 
 ## Remaining external/human steps
 
-- Obtain one fresh crawler S3 URL, add only its exact bucket hostname to `PDF_ALLOWED_HOSTS`, and run
-  crawler → backend → AI. The public API itself and a real ApplyHome URL are already verified.
-- A repository owner must import/apply the handoff artifacts or grant write access; current pushes fail
-  with 403.
+- Backend must retry crawler → backend → AI with a fresh pre-signed URL after the global S3 host
+  allowlist update. An authenticated probe confirmed that host validation now reaches PDF download.
 - A human must approve extractor-0.2 review sheets before backend production use.
 - Real bank loan-guide PDF pairs are required before enabling document-change detection publicly.

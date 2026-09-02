@@ -33,6 +33,7 @@ backend가 이미 산출한 경로별 한도와 현금 스냅샷만 받아 advis
 - 동기 연결 시험의 read timeout은 310초 이상으로 둡니다. 실제 서비스 판정 요청에서 매번 모델을 호출하지 않고, 사전 분석·검수본을 읽는 구조가 원칙입니다.
 - 신규 Qwen 분석은 동시 1건입니다. 처리 중인 분석이 있더라도 exact `REVIEWED` 검수본 조회는 세마포어 밖에서 먼저 처리됩니다. 검수본이 없는 신규 분석끼리 경합하면 `503 ANALYSIS_SERVER_BUSY`를 반환하므로 짧은 지수 백오프로 재시도합니다.
 - crawler의 10분짜리 URL은 호출 직전에 새로 만들고 캐시하지 않습니다. `401/403` 또는 retryable 다운로드 오류이면 새 URL을 발급합니다.
+- crawler S3 signer가 반환한 PDF 호스트는 현재 `getmyhome-pdfs-758862546581.s3.ap-northeast-2.amazonaws.com`과 `getmyhome-pdfs-758862546581.s3.amazonaws.com` 두 형식이 확인됐습니다. AI 운영 환경은 두 정확한 호스트만 `PDF_ALLOWED_HOSTS`에 등록하며, 광범위한 S3 와일드카드는 허용하지 않습니다.
 - 주택형을 지정하면 `unit_type_id`, `unit_type_name`, `sale_price_manwon`을 모두 보내야 합니다. 하나라도 빠지면 HTTP 422입니다.
 - live backend 매핑은 `unit_types[].unit_type_id → unit_type_id`, `type → unit_type_name`, `sale_price → sale_price_manwon`입니다. AI는 `059.9883A`를 PDF 약식명 `59A`로 정규화합니다.
 - 현재 `sale_price`는 동·층별 확정가격이 아니라 주택형 최고가입니다. 사용자 판정에는 **주택형 최고가 기준의 보수적 결과**라고 표시합니다.
