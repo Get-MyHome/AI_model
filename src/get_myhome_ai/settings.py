@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     app_name: str = "get-myhome-ai"
-    app_version: str = "0.2.0"
+    app_version: str = "0.3.0"
     schema_version: str = "v0.3"
     extractor_version: str = "0.2.0"
     prompt_version: str = "extract-v1"

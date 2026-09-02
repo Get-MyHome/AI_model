@@ -4,7 +4,10 @@
 
 문서 공통 분석만 수행할 때는 `complex_id`, `pdf_url` 두 개로 충분합니다. 선택 주택형의 실제 자금판정에 사용할 분석 요청은 `unit_type_id`, `unit_type_name`, `sale_price_manwon`까지 **총 5개를 모두** 보내야 합니다. 세 target 필드 중 일부만 보내면 HTTP 422를 반환합니다.
 
-대출 상품, 사용자 소득, 보유 현금은 AI 입력이 아닙니다. AI는 공고문 사실을 추출하고, backend가 그 결과를 사용자 조건·규칙표와 결합해 대출 경로와 완주 가능성을 계산합니다.
+`POST /api/analyze`에는 대출 상품, 사용자 소득, 보유 현금이 필요하지 않습니다.
+AI는 공고문 사실을 추출하고, backend가 사용자 조건·규칙표로 기존 대출 경로와 한도를
+계산하는 경계는 유지합니다. 별도 `POST /api/funding-stress`는 소득·부채를 받지 않고,
+backend가 이미 산출한 경로별 한도와 현금 스냅샷만 받아 advisory 임계비율을 계산합니다.
 
 ## 요청
 
@@ -128,6 +131,20 @@ PDF·공고·주택형·가격뿐 아니라 추출기 버전도 정확히 일치
 `NOT_VALIDATED_ON_BANK_GUIDANCE`를 명시합니다. 실제 문서 쌍을 검수하기 전에는 “조건 변경
 탐지 완료”라고 표현하지 않습니다.
 
+## AI 서버 advisory 계산
+
+기존 backend 자금판정을 수정하지 않고, AI 서버에 별도
+`POST /api/funding-stress`를 추가했습니다. 이 API는 다음만 계산합니다.
+
+- 중도금 구간을 통과하기 위한 최소 대출비율
+- 공고문상 알선 상한과 임계비율의 조건부 마진
+- 0%·공고문 비율·임계비율·중도금 총비율 스트레스
+- backend 경로별 min/max 한도를 합산하지 않은 독립 시나리오
+- 상환·대환 중도금 원금을 잔금 필요액에 포함한 부족 구간
+
+부분 대출의 회차별 충당 순서가 없으면 정확한 회차·날짜를 생성하지 않습니다.
+세부 규격과 2026000372 고정 회귀값은 `docs/FUNDING_STRESS_API.md`입니다.
+
 ## HOLD와 오류
 
 - 문서상 불확실성: HTTP 200 응답 안의 `analysis_status=PARTIAL|HOLD`와 `blocking=true` HOLD
@@ -139,26 +156,8 @@ PDF·공고·주택형·가격뿐 아니라 추출기 버전도 정확히 일치
 
 HOLD 문구는 `docs/HOLD_CODES.md` 및 `holds.py`에 고정되어 있습니다. 같은 입력이면 같은 문구가 반환됩니다.
 
-## backend 통합 상태
+## backend 유지 원칙
 
-로컬 `codex/ai-v03-integration` 브랜치(`a2d67a3`)에는 canonical v0.3 역직렬화, 5개 요청 필드, Bearer 인증, 310초 timeout, `REVIEWED` 검증, 납부 타임라인·최초 자금 단절·부족액 계산, `interimFinancing` 응답이 구현되어 전체 Gradle 테스트를 통과했습니다.
-
-GitHub `origin/develop`(`b6c6156`)에는 위 6개 커밋이 아직 병합되지 않았습니다. 따라서 원격 저장소 기준 backend는 여전히 구형 계약이며, 로컬 통합 브랜치 또는 `/mnt/20t/AI_해커톤/backend-ai-v03-integration.patch`를 병합해야 합니다. 패치 SHA-256은 `6644ac0a4729130c5a6ea2d9e6e8b95edd13981136e518045496de2ba76f68d0`입니다.
-
-아래 항목은 미구현 목록이 아니라 `origin/develop` 병합 확인 목록입니다.
-
-- snake_case 정본 역직렬화 또는 명시적 매핑
-- 대출·자납 비율을 총 분양가 기준으로 수신
-- 비율과 정액 납부 모두 수신
-- 개별 필드 `null`을 0으로 계산하지 않음
-- HOLD·근거·검수 상태 수신
-- 선택비용과 분양가 포함비용을 기본 잔금에 자동 합산하지 않음
-- `analysis_status`와 최종 `funding_status`를 별개 필드로 관리
-- `validation.passed=false` 또는 `analysis_status=HOLD`이면 계산 차단
-- 사용자 서비스에는 `review_status=REVIEWED` 데이터만 사용
-- 중도금 회차·추가비용 회차를 날짜순 납부 이벤트로 만들고 첫 부족 이벤트를 계산
-- 자납 회차가 미확정이면 특정 날짜를 만들지 않고 `INTERIM/CONDITIONAL`로 표시
-
-`origin/develop`의 legacy DTO와 총액 중심 계산은 `중도금 60% × 대출 40% = 24%`로 오해할 수 있습니다. 정본의 `arranged_ratio=0.40`은 이미 **총 분양가 대비 40%**이므로 다시 중도금 비율을 곱하면 안 됩니다.
-
-세부 차이는 `docs/BACKEND_COMPATIBILITY.md`에 정리돼 있습니다.
+이 버전은 backend 저장소·DTO·판정 로직을 수정하지 않습니다. `POST /api/analyze`와
+`POST /api/funding-stress`는 AI 저장소 내의 독립 계약입니다. 기존 backend는 계속 현재 판정의
+정본이며, advisory를 서비스 화면에 쓸지는 향후 팀 선택입니다.

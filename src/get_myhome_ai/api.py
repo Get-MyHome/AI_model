@@ -17,7 +17,9 @@ from get_myhome_ai.errors import (
     AnalysisError,
     AnalysisTimeoutError,
     AuthenticationError,
+    FundingStressUnavailableError,
 )
+from get_myhome_ai.funding_stress import calculate_funding_stress
 from get_myhome_ai.models import (
     AnalysisResponse,
     AnalyzeRequest,
@@ -31,6 +33,7 @@ from get_myhome_ai.providers.base import ExtractorProvider
 from get_myhome_ai.providers.factory import create_provider
 from get_myhome_ai.reviewed_store import find_reviewed_artifact
 from get_myhome_ai.settings import Settings, get_settings
+from get_myhome_ai.stress_models import FundingStressRequest, FundingStressResponse
 
 
 def _temporary_directory_is_writable() -> bool:
@@ -156,6 +159,21 @@ def create_app(
         finally:
             semaphore.release()
 
+    async def require_reviewed_analysis(payload: AnalyzeRequest) -> AnalysisResponse:
+        downloaded = await active_pipeline.download_url(payload)
+        reviewed = find_reviewed_artifact(
+            request=payload,
+            source_sha256=downloaded.sha256,
+            reviewed_artifact_dir=active_settings.reviewed_artifact_dir,
+            schema_version=active_settings.schema_version,
+            extractor_version=active_settings.extractor_version,
+        )
+        if reviewed is None:
+            raise FundingStressUnavailableError(
+                "정확한 PDF·주택형·분양가·추출기 버전의 REVIEWED 검수본이 필요합니다."
+            )
+        return reviewed
+
     @app.post(
         "/api/analyze",
         response_model=AnalysisResponse,
@@ -171,6 +189,17 @@ def create_app(
     )
     async def analyze_legacy(payload: AnalyzeRequest) -> BackendV1Response:
         return to_backend_v1(await run_analysis(payload))
+
+    @app.post(
+        "/api/funding-stress",
+        response_model=FundingStressResponse,
+        dependencies=[Depends(authenticate)],
+    )
+    async def funding_stress(payload: FundingStressRequest) -> FundingStressResponse:
+        analysis = await require_reviewed_analysis(payload.analysis_request)
+        # The calculator is deterministic CPU work. Keep it outside the async
+        # event loop so health checks and PDF requests remain responsive.
+        return await asyncio.to_thread(calculate_funding_stress, payload, analysis)
 
     return app
 

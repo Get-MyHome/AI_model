@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -79,6 +80,7 @@ SELF_FUNDING_IDS = {
     "2026000377",
 }
 RISK_CODES = set(RiskClauseCode)
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _expected_settlement(complex_id: str) -> LoanSettlementRequirement:
@@ -114,6 +116,19 @@ def _default_pdf_dir() -> Path:
     )
 
 
+def _expected_sha256() -> dict[str, str]:
+    result: dict[str, str] = {}
+    for path in sorted((REPO_ROOT / "evaluation/reference").glob("*.json")):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        result[str(payload["complex_id"])] = str(payload["source"]["pdf_sha256"])
+    golden_manifest = json.loads(
+        (REPO_ROOT / "tests/fixtures/golden/MANIFEST.json").read_text(encoding="utf-8")
+    )
+    for filename, metadata in golden_manifest.items():
+        result[filename.split("_")[0]] = str(metadata["sha256"])
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--pdf-dir", type=Path, default=_default_pdf_dir())
@@ -129,8 +144,15 @@ def main() -> int:
     total_labels = len(ALL_IDS) * (1 + len(RISK_CODES))
     evidence_quote_total = 0
     evidence_quote_correct = 0
+    settlement_evidence_total = 0
+    settlement_evidence_correct = 0
+    source_sha_matches = 0
+    expected_sha = _expected_sha256()
     for complex_id in sorted(ALL_IDS):
         downloaded = load_pdf_from_path(paths[complex_id], settings)
+        actual_sha256 = hashlib.sha256(downloaded.content).hexdigest()
+        source_match = actual_sha256 == expected_sha.get(complex_id)
+        source_sha_matches += int(source_match)
         pages = extract_pdf_pages(downloaded.content, settings)
         candidates = select_candidate_pages(
             pages,
@@ -162,6 +184,22 @@ def main() -> int:
                 matched = "".join(evidence.raw_text.split()) in page_text[evidence.page]
                 evidence_quote_correct += int(matched)
                 evidence_matches.append(matched)
+        settlement_fields = {
+            "/interim_loan/settlement_requirement",
+            "/interim_loan/settlement_deadline_text",
+        }
+        if complex_id == "2026000376":
+            settlement_fields = {"/interim_loan/arrangement_status"}
+        elif complex_id == "2026000323":
+            settlement_fields = set()
+        settlement_matches = []
+        for evidence in normalized.evidence:
+            if evidence.field not in settlement_fields:
+                continue
+            settlement_evidence_total += 1
+            matched = "".join(evidence.raw_text.split()) in page_text[evidence.page]
+            settlement_evidence_correct += int(matched)
+            settlement_matches.append(matched)
         cases.append(
             {
                 "complex_id": complex_id,
@@ -171,6 +209,8 @@ def main() -> int:
                 "risks_actual": sorted(code.value for code in actual_risks),
                 "exact_match": settlement_match and actual_risks == expected_risks,
                 "evidence_quotes_valid": all(evidence_matches),
+                "settlement_evidence_quotes_valid": all(settlement_matches),
+                "source_sha256_match": source_match,
             }
         )
 
@@ -189,6 +229,15 @@ def main() -> int:
         ),
         "evidence_quote_correct": evidence_quote_correct,
         "evidence_quote_total": evidence_quote_total,
+        "settlement_evidence_quote_accuracy": (
+            settlement_evidence_correct / settlement_evidence_total
+            if settlement_evidence_total
+            else None
+        ),
+        "settlement_evidence_quote_correct": settlement_evidence_correct,
+        "settlement_evidence_quote_total": settlement_evidence_total,
+        "source_sha256_matches": source_sha_matches,
+        "source_document_count": len(ALL_IDS),
         "known_limits": [
             "TERMS_DIFFER_BY_HOUSING_TYPE has zero positive examples in this corpus.",
             "Bank-guidance document extraction and cross-document comparison are not validated.",
@@ -197,7 +246,16 @@ def main() -> int:
         "cases": cases,
     }
     print(json.dumps(report, ensure_ascii=False, indent=2))
-    return 0 if exact_cases == len(cases) and correct_labels == total_labels else 1
+    return (
+        0
+        if exact_cases == len(cases)
+        and correct_labels == total_labels
+        and evidence_quote_correct == evidence_quote_total
+        and settlement_evidence_total == 51
+        and settlement_evidence_correct == settlement_evidence_total
+        and source_sha_matches == len(ALL_IDS)
+        else 1
+    )
 
 
 if __name__ == "__main__":

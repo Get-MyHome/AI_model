@@ -10,6 +10,7 @@ from pydantic import AnyHttpUrl, TypeAdapter
 from get_myhome_ai.evaluation import evaluate_case, summarize_evaluations
 from get_myhome_ai.fixtures import load_golden_cases
 from get_myhome_ai.models import AnalyzeRequest
+from get_myhome_ai.pdf_text import extract_pdf_pages, load_pdf_from_path
 from get_myhome_ai.pipeline import AnalysisPipeline
 from get_myhome_ai.providers.factory import create_provider
 from get_myhome_ai.review import (
@@ -52,6 +53,11 @@ def _parser() -> argparse.ArgumentParser:
     review.add_argument("--input", type=Path, required=True)
     review.add_argument("--output", type=Path, required=True)
     review.add_argument("--reviewer", required=True)
+    review.add_argument(
+        "--pdf",
+        required=True,
+        help="자동 추출본을 만든 정확한 원본 PDF",
+    )
     review.add_argument(
         "--confirm-source-reviewed",
         action="store_true",
@@ -162,7 +168,14 @@ def run() -> None:
     if args.command == "review":
         if not args.confirm_source_reviewed:
             parser.error("review에는 --confirm-source-reviewed가 필요합니다.")
-        reviewed = approve_result(load_result(args.input), reviewer=args.reviewer)
+        downloaded = load_pdf_from_path(args.pdf, settings)
+        pages = extract_pdf_pages(downloaded.content, settings)
+        reviewed = approve_result(
+            load_result(args.input),
+            reviewer=args.reviewer,
+            source_sha256=downloaded.sha256,
+            pages=pages,
+        )
         save_result(reviewed, args.output)
         print(args.output)
         return

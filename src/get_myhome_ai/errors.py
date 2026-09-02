@@ -71,3 +71,8 @@ class AnalysisBusyError(AnalysisError):
     code = "ANALYSIS_SERVER_BUSY"
     status_code = 503
     retryable = True
+
+
+class FundingStressUnavailableError(AnalysisError):
+    code = "FUNDING_STRESS_UNAVAILABLE"
+    status_code = 409

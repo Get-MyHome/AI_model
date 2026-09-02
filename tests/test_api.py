@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import date
 
 from conftest import synthetic_pages
 from fastapi.testclient import TestClient
 
 from get_myhome_ai.api import create_app
+from get_myhome_ai.models import AnalyzeRequest
 from get_myhome_ai.pdf_text import DownloadedPdf
 from get_myhome_ai.pipeline import AnalysisPipeline
 from get_myhome_ai.providers.fixture import FixtureExtractor
+from get_myhome_ai.review import approve_result, save_result
 from get_myhome_ai.settings import Settings
 
 
@@ -121,3 +124,73 @@ def test_target_unit_fields_must_be_sent_together(golden_cases) -> None:
             },
         )
         assert response.status_code == 422
+
+
+async def test_funding_stress_endpoint_uses_exact_reviewed_artifact(
+    golden_cases, tmp_path
+) -> None:
+    case = golden_cases["2026000376"]
+    content = b"%PDF-reviewed-stress"
+    source_sha256 = hashlib.sha256(content).hexdigest()
+
+    async def loader(_url, _settings):
+        return DownloadedPdf(content=content, sha256=source_sha256)
+
+    settings = Settings(
+        ai_provider="fixture",
+        allow_unauthenticated_dev=True,
+        allow_unrestricted_pdf_hosts_dev=True,
+        reviewed_artifact_dir=tmp_path / "reviewed",
+    )
+    provider = FixtureExtractor({case.complex_id: case.expected})
+    pipeline = AnalysisPipeline(
+        settings=settings,
+        provider=provider,
+        url_loader=loader,
+        page_extractor=lambda _content, _settings: synthetic_pages(case),
+    )
+    payload = {
+        "complex_id": case.complex_id,
+        "pdf_url": "https://example.com/file.pdf",
+        "unit_type_id": "01",
+        "unit_type_name": case.unit_type_name,
+        "sale_price_manwon": case.sale_price_manwon,
+    }
+    automatic = await pipeline.analyze_url(AnalyzeRequest(**payload))
+    reviewed = approve_result(
+        automatic,
+        reviewer="api-test-reviewer",
+        source_sha256=source_sha256,
+        pages=synthetic_pages(case),
+    )
+    save_result(reviewed, settings.reviewed_artifact_dir / "reviewed.json")
+    app = create_app(settings=settings, pipeline=pipeline)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/funding-stress",
+            json={
+                "analysis_request": payload,
+                "cash_manwon": 3395,
+                "cash_snapshot_timing": "PRE_CONTRACT",
+                "monthly_saving_manwon": None,
+                "as_of_date": str(date(2026, 9, 2)),
+                "loan_routes": [
+                    {
+                        "route_id": "bank",
+                        "product_code": "BANK_MORTGAGE",
+                        "product_name": "은행 주택담보대출",
+                        "status": "OK",
+                        "limit_min_manwon": None,
+                        "limit_max_manwon": 44505,
+                        "rule_version": "2026-08-31",
+                        "assumption_set_id": "mvp-v1",
+                    }
+                ],
+                "interim_ratio_grid_bps": [0],
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["advisory"] is True
+    assert response.json()["analysis_fingerprint"]["source_sha256"] == source_sha256

@@ -1515,3 +1515,39 @@ def ground_ollama_draft(
     _ground_risk_clauses(grounded, pages, evidence)
     grounded.evidence = evidence
     return grounded
+
+
+_REVIEW_REGROUNDED_EVIDENCE_PATHS = {
+    "/interim_loan/settlement_requirement",
+    "/interim_loan/settlement_deadline_text",
+    "/interim_loan/extension_contingency_disclosed",
+    "/exception_flags",
+}
+
+
+def reground_review_metadata(
+    draft: ExtractionDraft,
+    *,
+    pages: list[CandidatePage],
+) -> ExtractionDraft:
+    """Rebuild deterministic review metadata from the exact source PDF.
+
+    A review artifact is editable by design.  Consequently its settlement
+    fields, risk clauses, exception flags, and their evidence cannot be used as
+    an approval authority.  Re-run the deterministic source rules for those
+    fields while retaining the human-reviewed factual payment/loan fields.
+    """
+
+    grounded = draft.model_copy(deep=True)
+    evidence = [
+        item
+        for item in grounded.evidence
+        if item.field not in _REVIEW_REGROUNDED_EVIDENCE_PATHS
+    ]
+    for item in _ground_settlement(grounded, pages):
+        _append_evidence(evidence, item)
+    for item in _ground_exception_flags(grounded, pages):
+        _append_evidence(evidence, item)
+    _ground_risk_clauses(grounded, pages, evidence)
+    grounded.evidence = evidence
+    return grounded

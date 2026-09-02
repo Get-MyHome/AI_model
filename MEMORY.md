@@ -8,6 +8,14 @@
 - Runtime units and the mode-600 secret environment file live under ignored `.local/runtime/` paths.
   Never commit or print the API key, pre-signed URLs, or full PDF contents.
 - Canonical JSON stays additive schema `v0.3`; extractor version is `0.2.0`.
+- App version `0.3.0` adds authenticated `POST /api/funding-stress` as an independent advisory.
+  It consumes only an exact extractor-0.2 `REVIEWED` artifact, a `PRE_CONTRACT` cash snapshot, and
+  backend-produced alternative loan-route limits. It never replaces or mutates backend verdict logic.
+- Funding stress deterministically returns the interim continuity threshold, document-cap margin,
+  route-specific stress cases, and first shortfall. Unknown required-cost allocation, sale-price
+  inclusion, or unit applicability produces `UNKNOWN` plus a blocking HOLD, never a zero assumption.
+- Threshold lookup uses bounded integer-bps binary search and the API runs CPU calculation outside the
+  async event loop. Route rule/assumption provenance is preserved in every response case.
 - Extractor 0.2 adds evidence-grounded interim-loan settlement requirements and deterministic funding
   risk clauses. Unknown settlement terms produce `BALANCE_CONVERSION_UNCERTAIN`; missing facts are
   never converted to zero.
@@ -25,22 +33,22 @@
   27/27 document exact matches, 189/189 labels, and 89/89 literal evidence-page quote checks. This is
   deterministic post-processing accuracy, not Qwen accuracy. The corpus has zero positive
   `TERMS_DIFFER_BY_HOUSING_TYPE` examples.
-- Full AI verification at commit `50f556b`: Ruff passed, compileall passed, 110 pytest tests passed, and
-  `python scripts/evaluate_risk_settlement.py` exited 0.
-- The backend integration worktree branch `codex/ai-v03-integration` now ingests extractor 0.2
-  settlement/risk fields and includes arranged interim-loan principal at balance when repayment or
-  refinancing is required. Unknown settlement is conservatively carried and blocking-HOLDed.
-- Backend commit `56a3db9` passed `./gradlew clean build` with JDK 17: 121 tests, 0 failures/errors,
-  one intentionally skipped opt-in live E2E test.
-- Both organization pushes are blocked by GitHub HTTP 403 for the current account.
+- Full AI verification on 2026-09-02: Ruff passed, compileall passed, 129 pytest tests passed, and
+  `python scripts/evaluate_risk_settlement.py` passed all 27 source hashes, 189/189 deterministic
+  labels, 89/89 risk quotes, and 51/51 settlement quotes.
+- Review approval ignores editable `derived_fields`, re-grounds deterministic metadata against the
+  exact PDF, and regenerates validation, HOLDs, status, and summary before setting `REVIEWED`.
+- Backend is a strict no-edit boundary. It remains the production funding/verdict SSOT; AI funding
+  stress is additive advisory output only.
+- The Get-MyHome organization push is blocked by GitHub HTTP 403 for account `soccz` until the repo
+  owner grants Write access or installs an AI_model-scoped deploy key.
 
 ## Handoff artifacts
 
 - AI patches: `/mnt/20t/AI_해커톤/0001-feat-extract-settlement-and-funding-risk-clauses.patch`
   and `/mnt/20t/AI_해커톤/0002-docs-correct-settlement-principal-handoff.patch`
 - Complete AI bundle: `/mnt/20t/AI_해커톤/get-myhome-ai-complete.bundle`
-- Backend patch: `/mnt/20t/AI_해커톤/backend-ai-v03-integration.patch`
-- Backend bundle: `/mnt/20t/AI_해커톤/backend-ai-v03-integration-56a3db9.bundle`
+- Do not create or distribute backend patches from this project. Backend is read-only.
 
 ## Claims and boundaries
 

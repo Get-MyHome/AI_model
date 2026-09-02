@@ -8,8 +8,9 @@ Get-MyHome은 청약 당첨 이후 계약금·중도금·잔금 사이의 자금
 
 1. `crawler`가 청약홈에서 공고문을 수집해 S3에 저장하고 fresh pre-signed URL을 backend에 반환합니다.
 2. backend가 공고번호·PDF URL에 선택 주택형 ID·명칭·최고 분양가를 결합해 AI를 호출합니다. 개발 중에는 로컬 PDF를 동일한 파이프라인에 입력할 수 있습니다.
-3. AI는 문서 사실과 근거만 반환합니다. backend는 사용자 조건과 검수된 문서 데이터를 결합해 납부 타임라인, 최초 자금 단절 구간·예상 시점·부족액·확정도를 계산합니다.
+3. AI는 문서 사실과 근거를 반환합니다. backend는 사용자 조건과 검수된 문서 데이터를 결합해 기존 자금판정을 계산합니다.
 4. 자동 검증을 통과해도 `AUTO_EXTRACTED`이며, 사람 검수 후 `REVIEWED`가 된 결과만 backend 자금판정에 사용합니다.
+5. 선택형 `POST /api/funding-stress`는 backend가 이미 계산한 경로별 한도를 받아 중도금 최소 필요비율·안전마진·비율별 부족 구간을 재현하는 AI 서버 측 advisory입니다. 기존 backend 로직은 수정하지 않습니다.
 
 청약홈 페이지를 찾거나 크롤링하는 코드는 이 저장소에 두지 않습니다.
 
@@ -32,6 +33,7 @@ Get-MyHome은 청약 당첨 이후 계약금·중도금·잔금 사이의 자금
 - `docs/HOLD_CODES.md`: 고정 안내문과 다음 행동
 - `docs/GOLDEN_SET_v0.3.md`: 실제 공고문 3건의 수작업 정답
 - `docs/BACKEND_COMPATIBILITY.md`: 현재 Java DTO와 정본 계약의 차이
+- `docs/FUNDING_STRESS_API.md`: 검수본 기반 중도금 임계비율·스트레스 advisory API
 
 ## 현재 개발 방식
 
@@ -57,7 +59,13 @@ python -m pip install -e '.[dev]'
 해당 PDF 페이지에 실제 존재하는지 89/89를 확인했습니다. 이는 Qwen 모델 정확도가 아니라
 사람이 만든 참조 라벨 대비 결정론적 규칙 검증 결과입니다. 보유 표본에
 `TERMS_DIFFER_BY_HOUSING_TYPE` 양성 문서가 없어 해당 코드의 실제 양성 성능은 평가하지
-못했습니다. 재현 명령은 `python scripts/evaluate_risk_settlement.py`입니다.
+못했습니다. 상환·대환 근거는 별도로 51/51이 지정 페이지에 존재함을 확인했으며,
+위험조항 89건과 합쳐서 하나의 정확도 수치로 표현하지 않습니다. 재현 명령은
+`python scripts/evaluate_risk_settlement.py`입니다.
+
+전수감사에서 `bank_names`, `guarantee_provider`, 전체 범위의 `additional_costs`는 아직
+풀필드 성능을 측정하지 못했습니다. 이 값들은 임계비율 계산 근거로 쓰지 않고, 필수
+추가비용은 주택형·금액·납부 구간·필수 여부를 사람이 확인한 건만 합산합니다.
 
 ```bash
 ollama pull qwen3.5:9b
@@ -99,6 +107,7 @@ get-myhome-ai analyze-url \
 ```bash
 get-myhome-ai review \
   --input artifacts/auto/2026000372.json \
+  --pdf /path/to/2026000372_7.pdf \
   --output artifacts/reviewed/2026000372.json \
   --reviewer 안지홍 \
   --confirm-source-reviewed
@@ -126,6 +135,7 @@ get-myhome-ai serve --host 0.0.0.0 --port 9000
 
 - `POST /api/analyze`: v0.3 정본 응답
 - `POST /api/analyze/legacy`: 현재 Java DTO 임시 호환 응답
+- `POST /api/funding-stress`: REVIEWED 검수본+경로 한도 기반 advisory 스트레스
 - `GET /health`: 프로세스 생존 확인
 - `GET /ready`: `pdftotext`·임시 디렉터리·Provider·인증·PDF 호스트 허용 목록 확인
 
@@ -155,7 +165,9 @@ curl -X POST 'https://server.tailb23d4f.ts.net:10000/api/analyze' \
 
 서버는 먼저 PDF를 수령해 SHA-256을 계산합니다. 동일한 PDF SHA-256·공고번호·주택형 ID·분양가의 `REVIEWED` 검수본이 있으면 Qwen을 다시 호출하지 않고 그 검수본을 반환합니다. 없으면 `AUTO_EXTRACTED`를 반환하며 backend는 사용자 계산을 HOLD합니다. 단순히 `review_status` 문자열만 바꾼 데이터는 사용할 수 없고 검수자·검수시각·검증 통과·정확한 소스/대상 키가 모두 필요합니다. 신규 분석의 backend read timeout은 310초 이상이어야 하며, 10분짜리 PDF URL 자체는 캐시하지 않습니다.
 
-로컬 `codex/ai-v03-integration` backend 브랜치는 URL 자체에 POST하므로 `AI_SERVER_URL=http://ai-host:9000/api/analyze`처럼 경로까지 넣어야 합니다. 주택형을 지정할 때 세 target 필드는 전부 보내야 하며, backend의 `059.9883A` 표기는 AI 내부에서 PDF 약식명 `59A`로 정규화합니다. 로컬 통합 브랜치는 정본 v0.3 수신과 자금판정을 구현했지만 GitHub `origin/develop`은 아직 구형 DTO이므로, 통합 브랜치 병합 전까지는 `docs/BACKEND_COMPATIBILITY.md`의 손실 문제가 남아 있습니다.
+주택형을 지정할 때 세 target 필드는 전부 보내야 하며, backend의 `059.9883A`
+표기는 AI 내부에서 PDF 약식명 `59A`로 정규화합니다. 기존 backend 저장소와
+판정 로직은 이 AI 서버 변경에서 수정하지 않았습니다.
 
 ## 검증
 
