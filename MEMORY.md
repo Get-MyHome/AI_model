@@ -36,8 +36,9 @@
 
 ## Handoff artifacts
 
-- AI patch: `/mnt/20t/AI_해커톤/0001-feat-extract-settlement-and-funding-risk-clauses.patch`
-- AI bundle: `/mnt/20t/AI_해커톤/get-myhome-ai-50f556b.bundle`
+- AI patches: `/mnt/20t/AI_해커톤/0001-feat-extract-settlement-and-funding-risk-clauses.patch`
+  and `/mnt/20t/AI_해커톤/0002-docs-correct-settlement-principal-handoff.patch`
+- Complete AI bundle: `/mnt/20t/AI_해커톤/get-myhome-ai-complete.bundle`
 - Backend patch: `/mnt/20t/AI_해커톤/backend-ai-v03-integration.patch`
 - Backend bundle: `/mnt/20t/AI_해커톤/backend-ai-v03-integration-56a3db9.bundle`
 
