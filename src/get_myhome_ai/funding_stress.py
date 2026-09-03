@@ -890,8 +890,10 @@ def calculate_funding_stress(
         calculation_holds.append(
             _hold(
                 StressHoldCode.SELF_FUNDING_SCHEDULE_UNKNOWN,
-                "부분 대출이 어느 중도금 회차를 충당하는지 공고문으로는 확정할 수 없습니다.",
-                "회차별 대출 실행액과 자납일을 시행사에 확인하세요.",
+                "사업주체 알선 대출이 어느 중도금 회차를 충당하는지 "
+                "공고문으로는 확정할 수 없습니다.",
+                "회차별 알선 대출 실행액과 알선 범위 밖 금액의 "
+                "조달·납부 일정을 시행사에 확인하세요.",
                 blocking=True,
             )
         )

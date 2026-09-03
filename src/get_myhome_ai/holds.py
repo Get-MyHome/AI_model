@@ -41,11 +41,11 @@ HOLD_TEXT: dict[HoldReasonCode, tuple[str, str]] = {
     ),
     HoldReasonCode.LOAN_ARRANGEMENT_ONLY: (
         "대출 알선은 예정이지만 보장된 조건은 아니에요.",
-        "알선 확정 여부와 불가 시 자납 일정을 확인하세요.",
+        "알선 확정 여부와 불가 시 별도 조달 일정을 확인하세요.",
     ),
     HoldReasonCode.SELF_FUNDING_SCHEDULE_UNKNOWN: (
-        "직접 납부할 중도금은 확인됐지만 어느 회차에 낼지는 불명확해요.",
-        "자납분의 회차별 금액과 납부일을 시행사에 확인하세요.",
+        "사업주체 알선 범위 밖 중도금의 조달 방법과 적용 회차가 확인되지 않았어요.",
+        "알선 대출과 알선 범위 밖 금액이 각각 어느 회차에 얼마씩 적용되는지 시행사에 확인하세요.",
     ),
     HoldReasonCode.SELF_FUNDING_REQUIRED: (
         "중도금 일부를 직접 마련해야 해요.",

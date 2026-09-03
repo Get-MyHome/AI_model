@@ -38,6 +38,15 @@
   labels, 89/89 risk quotes, and 51/51 settlement quotes.
 - Review approval ignores editable `derived_fields`, re-grounds deterministic metadata against the
   exact PDF, and regenerates validation, HOLDs, status, and summary before setting `REVIEWED`.
+- A server-local extractor-0.2 `REVIEWED` artifact exists for the exact tuple
+  `2026000372 / unit 01 / 59A / 108650만원 / SHA ef0ff3…ba10 / 52 pages`. It is intentionally
+  ignored by Git. On 2026-09-03 the public `/api/analyze` returned this artifact and the public
+  `/api/funding-stress` returned HTTP 200 for the same official ApplyHome bytes.
+- The reviewed 0372 additional-cost scope contains only the manually checked optional 59A balcony
+  extension (1,870만원, 187/1,683). The optional system-air-conditioner row is excluded because its
+  715,000/6,435,000-won installments cannot be represented exactly by integer manwon fields.
+- Derived uncovered interim amounts are described as amounts outside the project-arranged range,
+  never as confirmed cash-only self-payment. HOLD and risk next-actions use the same wording.
 - Backend is a strict no-edit boundary. It remains the production funding/verdict SSOT; AI funding
   stress is additive advisory output only.
 - The AI_model deploy key is active and pushes to the Get-MyHome organization repository succeed.
@@ -61,12 +70,15 @@
   65,190-manwon principal must be repaid/refinanced. The actual 40% case first breaks at interim by
   21,730 and later has a 46,055 balance gap. Do not compare different-stage gaps as a simple delta.
 - Only `REVIEWED` artifacts with exact PDF/complex/unit/price/extractor-version keys may drive user
-  funding calculations. Current extractor-0.2 public responses remain `AUTO_EXTRACTED` until a human
-  checks the generated review sheet against the PDF.
+  funding calculations. New or non-matching extractor-0.2 responses remain `AUTO_EXTRACTED` until a
+  human checks the generated review sheet. `REVIEWED` removes the AI review-pending gate, not genuine
+  document uncertainty such as an undisclosed bank or personal approval.
 
 ## Remaining external/human steps
 
-- Backend must retry crawler → backend → AI with a fresh pre-signed URL after the global S3 host
-  allowlist update. An authenticated probe confirmed that host validation now reaches PDF download.
-- A human must approve extractor-0.2 review sheets before backend production use.
+- Backend/crawler must correct or explain the observed source mismatch: a request labeled
+  `2026000372` returned p.8/p.10/p.47 evidence matching the 74-page `2026000374` source
+  (`a67a4e…72ab`) instead of the locked 52-page 0372 source (`ef0ff3…ba10`). Compare the raw AI
+  `meta.source_sha256` and `source_page_count`; never approve the mismatched source.
+- Additional target tuples still require independent source-locked human review before production use.
 - Real bank loan-guide PDF pairs are required before enabling document-change detection publicly.

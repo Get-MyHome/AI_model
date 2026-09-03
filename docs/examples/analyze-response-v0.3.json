@@ -211,8 +211,8 @@
       "code": "SELF_FUNDING_REQUIRED",
       "impact_stage": "INTERIM",
       "origin": "DERIVED",
-      "message": "중도금 중 사업장 알선 대출로 충당되지 않는 직접 조달분이 있습니다.",
-      "next_action": "직접 납부할 비율과 회차별 금액·납부일을 시행사에 확인하세요.",
+      "message": "중도금 중 사업주체 알선 범위로 충당되지 않는 구간이 있습니다.",
+      "next_action": "알선 범위 밖 금액의 조달 방법과 회차별 납부 일정을 시행사에 확인하세요.",
       "evidence": [
         {
           "field": "/payment_schedule/interim_payment",
@@ -234,7 +234,7 @@
       "kind": "DOCUMENT_UNCERTAINTY",
       "blocking": true,
       "message": "대출 알선은 예정이지만 보장된 조건은 아니에요.",
-      "next_action": "알선 확정 여부와 불가 시 자납 일정을 확인하세요."
+      "next_action": "알선 확정 여부와 불가 시 별도 조달 일정을 확인하세요."
     },
     {
       "reason_code": "BANK_NOT_DISCLOSED",
@@ -247,8 +247,8 @@
       "reason_code": "SELF_FUNDING_SCHEDULE_UNKNOWN",
       "kind": "DOCUMENT_UNCERTAINTY",
       "blocking": true,
-      "message": "직접 납부할 중도금은 확인됐지만 어느 회차에 낼지는 불명확해요.",
-      "next_action": "자납분의 회차별 금액과 납부일을 시행사에 확인하세요."
+      "message": "사업주체 알선 범위 밖 중도금의 조달 방법과 적용 회차가 확인되지 않았어요.",
+      "next_action": "알선 대출과 알선 범위 밖 금액이 각각 어느 회차에 얼마씩 적용되는지 시행사에 확인하세요."
     },
     {
       "reason_code": "INDIVIDUAL_REVIEW_REQUIRED",

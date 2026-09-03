@@ -1030,7 +1030,7 @@ RISK_TEXT: dict[RiskClauseCode, tuple[PaymentStage, str, str]] = {
     RiskClauseCode.LOAN_MEDIATION_NOT_GUARANTEED: (
         PaymentStage.INTERIM,
         "사업주체의 중도금 대출 알선은 실제 실행을 보장하지 않습니다.",
-        "알선 확정 여부와 불가 시 직접 납부 일정을 시행사에 확인하세요.",
+        "알선 확정 여부와 불가 시 별도 조달 일정을 시행사에 확인하세요.",
     ),
     RiskClauseCode.INDIVIDUAL_REVIEW_REQUIRED: (
         PaymentStage.INTERIM,
@@ -1039,8 +1039,8 @@ RISK_TEXT: dict[RiskClauseCode, tuple[PaymentStage, str, str]] = {
     ),
     RiskClauseCode.SELF_FUNDING_REQUIRED: (
         PaymentStage.INTERIM,
-        "중도금 중 사업장 알선 대출로 충당되지 않는 직접 조달분이 있습니다.",
-        "직접 납부할 비율과 회차별 금액·납부일을 시행사에 확인하세요.",
+        "중도금 중 사업주체 알선 범위로 충당되지 않는 구간이 있습니다.",
+        "알선 범위 밖 금액의 조달 방법과 회차별 납부 일정을 시행사에 확인하세요.",
     ),
     RiskClauseCode.INTEREST_PAYMENT_RISK: (
         PaymentStage.BALANCE,

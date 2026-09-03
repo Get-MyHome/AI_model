@@ -121,6 +121,13 @@ async def test_0372_threshold_and_actual_ratio_change_funding_stage(golden_cases
     assert response.interim_continuity_threshold.minimum_ratio_bps == 6_000
     assert response.document_cap_comparison.interim_continuity.status == MarginStatus.NEGATIVE
     assert response.document_cap_comparison.interim_continuity.margin_bps == -2_000
+    schedule_hold = next(
+        hold
+        for hold in response.holds
+        if hold.code == StressHoldCode.SELF_FUNDING_SCHEDULE_UNKNOWN
+    )
+    assert "사업주체 알선 대출" in schedule_hold.message
+    assert "알선 범위 밖 금액의 조달·납부 일정" in schedule_hold.next_action
 
     route_case = response.route_cases[0]
     assert route_case.full_completion_threshold.status == ThresholdStatus.NOT_ACHIEVABLE

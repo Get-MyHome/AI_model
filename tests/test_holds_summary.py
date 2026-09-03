@@ -30,6 +30,14 @@ def test_holds_and_summary_are_deterministic(golden_cases) -> None:
         HoldReasonCode.SELF_FUNDING_SCHEDULE_UNKNOWN,
         HoldReasonCode.BALANCE_CONVERSION_UNCERTAIN,
     ]
+    schedule_hold = next(
+        hold
+        for hold in first
+        if hold.reason_code == HoldReasonCode.SELF_FUNDING_SCHEDULE_UNKNOWN
+    )
+    assert "알선 범위 밖 중도금" in schedule_hold.message
+    assert "직접 납부할 중도금은 확인" not in schedule_hold.message
+    assert "각각 어느 회차에 얼마씩 적용" in schedule_hold.next_action
     assert derive_analysis_status(report, first) == "PARTIAL"
     assert build_analysis_summary(draft) == build_analysis_summary(draft)
     assert "분양가의 40% 범위에서 중도금 대출을 알선할 예정" in build_analysis_summary(draft)
