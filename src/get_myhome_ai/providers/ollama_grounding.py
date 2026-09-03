@@ -248,6 +248,19 @@ def _won_values(raw_text: str) -> list[int]:
     return [int(value.replace(",", "")) for value in re.findall(r"\d[\d,]{3,}", raw_text)]
 
 
+def _exact_manwon(value_won: int) -> int | None:
+    """Convert won to integer manwon only when the conversion is lossless.
+
+    The public schema intentionally uses integer manwon for backend compatibility.
+    Rounding a source value such as 715,000 won to 72 manwon would turn a known
+    amount into a false exact value, so unsupported precision must abstain.
+    """
+
+    if value_won % 10_000:
+        return None
+    return value_won // 10_000
+
+
 def _sale_price_row(
     page: CandidatePage, sale_price_manwon: int | None
 ) -> tuple[str, list[int]] | None:
@@ -518,7 +531,9 @@ def _ground_payment(
         row = _sale_price_row(page, sale_price_manwon)
         row_text: str | None = None
         row_values: list[int] = []
-        interim_amounts_manwon: list[int] = []
+        interim_amounts_manwon: list[int | None] = []
+        interim_ratios_from_row: list[float] = []
+        interim_total_manwon: int | None = None
         if row is not None and dates:
             row_text, row_values = row
             sale_price_won = sale_price_manwon * 10_000 if sale_price_manwon else 0
@@ -529,13 +544,15 @@ def _ground_payment(
                 contract_values = payment_values[: -(interim_count + 1)]
                 interim_values = payment_values[-(interim_count + 1) : -1]
                 balance_value = payment_values[-1]
-                schedule.down_payment.total_amount_manwon = round(sum(contract_values) / 10_000)
+                schedule.down_payment.total_amount_manwon = _exact_manwon(
+                    sum(contract_values)
+                )
                 days_due = re.search(r"(\d+)\s*일\s*이내", section)
                 schedule.down_payment.installments = [
                     Installment(
                         number=index,
                         ratio=None,
-                        amount_manwon=round(value / 10_000),
+                        amount_manwon=_exact_manwon(value),
                         due_date=None,
                         due_text=(
                             "계약 시"
@@ -545,8 +562,12 @@ def _ground_payment(
                     )
                     for index, value in enumerate(contract_values, start=1)
                 ]
-                interim_amounts_manwon = [round(value / 10_000) for value in interim_values]
-                schedule.balance_payment.total_amount_manwon = round(balance_value / 10_000)
+                interim_amounts_manwon = [_exact_manwon(value) for value in interim_values]
+                interim_ratios_from_row = [
+                    round(value / sale_price_won, 10) for value in interim_values
+                ]
+                interim_total_manwon = _exact_manwon(sum(interim_values))
+                schedule.balance_payment.total_amount_manwon = _exact_manwon(balance_value)
                 schedule.balance_payment.basis = PaymentBasis.MIXED
                 for name in ("down_payment", "interim_payment", "balance_payment"):
                     _append_evidence(
@@ -578,12 +599,8 @@ def _ground_payment(
                         _ratio(installment_headers[index][1])
                         if installment_headers
                         else (
-                            round(interim_amounts_manwon[index] / sale_price_manwon, 10)
-                            if (
-                                interim_amounts_manwon
-                                and sale_price_manwon
-                                and schedule.interim_payment.total_ratio is not None
-                            )
+                            interim_ratios_from_row[index]
+                            if interim_ratios_from_row
                             else (representative_ratios[index] if representative_ratios else None)
                         )
                     ),
@@ -603,8 +620,8 @@ def _ground_payment(
                 )
                 for index in range(installment_count)
             ]
-            if interim_amounts_manwon:
-                schedule.interim_payment.total_amount_manwon = sum(interim_amounts_manwon)
+            if interim_total_manwon is not None:
+                schedule.interim_payment.total_amount_manwon = interim_total_manwon
                 schedule.interim_payment.basis = PaymentBasis.MIXED
             raw_dates = section[dates[0].start() : dates[installment_count - 1].end()]
             _append_evidence(
@@ -1379,10 +1396,10 @@ def _ground_costs(
         )
         if looks_like_won:
             if cost.total_amount_manwon is not None:
-                cost.total_amount_manwon = round(cost.total_amount_manwon / 10_000)
+                cost.total_amount_manwon = _exact_manwon(cost.total_amount_manwon)
             for payment in cost.payments:
                 if payment.amount_manwon is not None:
-                    payment.amount_manwon = round(payment.amount_manwon / 10_000)
+                    payment.amount_manwon = _exact_manwon(payment.amount_manwon)
 
         is_included_balcony = (
             explicitly_included and cost.type == AdditionalCostType.BALCONY_EXTENSION
@@ -1419,7 +1436,7 @@ def _ground_costs(
             page_number, raw_text = row
             row_amounts = _won_values(raw_text)
             if len(row_amounts) >= 2:
-                cost.total_amount_manwon = round(row_amounts[0] / 10_000)
+                cost.total_amount_manwon = _exact_manwon(row_amounts[0])
                 payment_amounts = row_amounts[1:]
                 template = _cost_payment_template(
                     pages,
@@ -1431,7 +1448,7 @@ def _ground_costs(
                         AdditionalCostPayment(
                             number=number,
                             stage=stage,
-                            amount_manwon=round(amount / 10_000),
+                            amount_manwon=_exact_manwon(amount),
                             due_date=due_date,
                             due_text=due_text,
                         )
@@ -1442,7 +1459,7 @@ def _ground_costs(
                     ]
                 elif len(cost.payments) == len(payment_amounts):
                     for payment, amount in zip(cost.payments, payment_amounts, strict=True):
-                        payment.amount_manwon = round(amount / 10_000)
+                        payment.amount_manwon = _exact_manwon(amount)
                         if payment.stage in {
                             PaymentStage.CONTRACT,
                             PaymentStage.BALANCE,

@@ -139,6 +139,54 @@ def test_missing_balance_due_and_cost_schedule_create_warnings(golden_cases) -> 
     assert {"BALANCE_DUE_MISSING", "ADDITIONAL_COST_SCHEDULE_MISSING"} <= _codes(report)
 
 
+def test_targeted_result_cannot_pass_with_unextracted_cost_section(golden_cases) -> None:
+    case = golden_cases["2026000358"]
+    draft = case.expected.model_copy(deep=True)
+    draft.additional_costs = []
+    draft.evidence = [
+        item for item in draft.evidence if not item.field.startswith("/additional_costs/")
+    ]
+    normalized, derived = normalize_draft(draft)
+    pages = [
+        *synthetic_pages(case),
+        PdfPage(number=99, text="발코니 확장 공사비 공급금액 및 납부일정"),
+    ]
+
+    report = validate_draft(
+        normalized,
+        pages=pages,
+        derived_fields=derived,
+        sale_price_manwon=case.sale_price_manwon,
+    )
+
+    assert "ADDITIONAL_COST_SECTION_UNEXTRACTED" in _codes(report)
+    assert not report.passed
+    holds = derive_holds(draft, report, unit_type_name=case.unit_type_name)
+    assert HoldReasonCode.ADDITIONAL_COST_UNKNOWN in {
+        item.reason_code for item in holds
+    }
+
+
+def test_document_common_result_may_omit_unit_specific_costs(golden_cases) -> None:
+    case = golden_cases["2026000358"]
+    draft = case.expected.model_copy(deep=True)
+    draft.additional_costs = []
+    draft.evidence = [
+        item for item in draft.evidence if not item.field.startswith("/additional_costs/")
+    ]
+    normalized, derived = normalize_draft(draft)
+    pages = [PdfPage(number=1, text="발코니 확장 공사비 공급금액 및 납부일정")]
+
+    report = validate_draft(
+        normalized,
+        pages=pages,
+        derived_fields=derived,
+        sale_price_manwon=None,
+    )
+
+    assert "ADDITIONAL_COST_SECTION_UNEXTRACTED" not in _codes(report)
+
+
 def test_one_manwon_additional_cost_rounding_difference_is_allowed(golden_cases) -> None:
     case = golden_cases["2026000358"]
     draft = case.expected.model_copy(deep=True)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import logging
 import shutil
 import tempfile
 from collections.abc import AsyncIterator
@@ -31,9 +32,16 @@ from get_myhome_ai.models import (
 from get_myhome_ai.pipeline import AnalysisPipeline
 from get_myhome_ai.providers.base import ExtractorProvider
 from get_myhome_ai.providers.factory import create_provider
+from get_myhome_ai.review_capture import capture_review_result, capture_review_source
 from get_myhome_ai.reviewed_store import find_reviewed_artifact
+from get_myhome_ai.runtime_source import (
+    RUNNING_SOURCE_FINGERPRINT_SHA256,
+    SOURCE_FINGERPRINT_ALGORITHM,
+)
 from get_myhome_ai.settings import Settings, get_settings
 from get_myhome_ai.stress_models import FundingStressRequest, FundingStressResponse
+
+logger = logging.getLogger(__name__)
 
 
 def _temporary_directory_is_writable() -> bool:
@@ -88,7 +96,12 @@ def create_app(
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
-        return HealthResponse(status="ok", version=active_settings.app_version)
+        return HealthResponse(
+            status="ok",
+            version=active_settings.app_version,
+            source_fingerprint_algorithm=SOURCE_FINGERPRINT_ALGORITHM,
+            source_fingerprint_sha256=RUNNING_SOURCE_FINGERPRINT_SHA256,
+        )
 
     @app.get("/ready", response_model=ReadinessResponse)
     async def ready():
@@ -143,6 +156,21 @@ def create_app(
         if reviewed is not None:
             return reviewed
 
+        capture_key: str | None = None
+        if active_settings.review_capture_dir is not None:
+            try:
+                capture_key = await asyncio.to_thread(
+                    capture_review_source,
+                    active_settings.review_capture_dir,
+                    payload,
+                    downloaded,
+                )
+            except (OSError, ValueError):
+                logger.exception(
+                    "AI 검수 캡처 원본 저장 실패: complex_id=%s",
+                    payload.complex_id,
+                )
+
         try:
             async with asyncio.timeout(active_settings.analysis_queue_timeout_seconds):
                 await semaphore.acquire()
@@ -153,7 +181,21 @@ def create_app(
         try:
             try:
                 async with asyncio.timeout(active_settings.analysis_timeout_seconds):
-                    return await active_pipeline.analyze_downloaded(payload, downloaded)
+                    result = await active_pipeline.analyze_downloaded(payload, downloaded)
+                    if capture_key is not None and active_settings.review_capture_dir is not None:
+                        try:
+                            await asyncio.to_thread(
+                                capture_review_result,
+                                active_settings.review_capture_dir,
+                                capture_key,
+                                result,
+                            )
+                        except (OSError, ValueError):
+                            logger.exception(
+                                "AI 검수 캡처 결과 저장 실패: complex_id=%s",
+                                payload.complex_id,
+                            )
+                    return result
             except TimeoutError as exc:
                 raise AnalysisTimeoutError("PDF AI 분석 시간이 초과됐습니다.") from exc
         finally:

@@ -53,6 +53,25 @@
 - Production `PDF_ALLOWED_HOSTS` contains both exact crawler bucket forms: the regional
   `getmyhome-pdfs-758862546581.s3.ap-northeast-2.amazonaws.com` host and the global
   `getmyhome-pdfs-758862546581.s3.amazonaws.com` host. Never replace these with a broad S3 wildcard.
+- The owned-corpus batch review workflow creates source-locked `REVIEW_DRAFT` manifests,
+  editable AUTO/NEEDS_REVIEW artifacts, checklists, and a PENDING approval template. It can create
+  `REVIEWED` only from an item-level approval manifest, matching reviewer CLI confirmation, current
+  extractor/schema versions, exact draft hash, and a fresh exact-PDF revalidation.
+- The 2026-09-04 exact extraction run now covers all 159/159 PDF-backed tuples. The source-locked
+  v4 review batch contains 159 drafts/checklists: 86 pass structural validation and 73 fail it;
+  none is automatically human-approved. Eight HTML-only tuples remain unavailable without PDFs.
+- A separate strict semantic audit covered the recent-30-day 20 PDF documents / 117 target tuples.
+  Only the existing manually reviewed 2026000372/unit01 artifact is usable as-is; the remaining
+  drafts contain target-cost, table-column, precision, evidence, or installment-allocation issues.
+- Integer-manwon grounding now abstains instead of rounding source amounts that are not exactly
+  divisible by 10,000 won. This prevents half-manwon and sub-manwon source values from becoming
+  false exact values.
+- Production review capture is enabled for unmatched `/api/analyze` requests. It stores exact
+  source bytes by SHA, URL-free target metadata, and immutable auto outputs under ignored local
+  paths. A backend call is still required once per current complex to supply each official PDF.
+- The latest review workspace is `../tmp/owned-corpus-review-work-v4-exact`. It contains 159
+  source-locked drafts/checklists (86 structural pass, 73 fail) and incorporates fresh precision-safe
+  reruns for all three 2026000372 units. `version_compatible=159` is not an approval count.
 
 ## Handoff artifacts
 
@@ -81,4 +100,7 @@
   (`a67a4e…72ab`) instead of the locked 52-page 0372 source (`ef0ff3…ba10`). Compare the raw AI
   `meta.source_sha256` and `source_page_count`; never approve the mismatched source.
 - Additional target tuples still require independent source-locked human review before production use.
+- Do not approve the batch template wholesale. A human must review every approved target's source
+  PDF, exact unit/price, payment and loan terms, evidence, and additional-cost applicability; update
+  the edited draft hash and leave all unreviewed entries PENDING.
 - Real bank loan-guide PDF pairs are required before enabling document-change detection publicly.

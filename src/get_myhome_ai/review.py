@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import tempfile
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from get_myhome_ai.candidates import CandidatePage
@@ -134,14 +134,13 @@ def load_result(path: Path) -> AnalysisResponse:
     return AnalysisResponse.model_validate_json(path.read_text(encoding="utf-8"))
 
 
-def approve_result(
+def _revalidate_result(
     result: AnalysisResponse,
     *,
-    reviewer: str,
     source_sha256: str,
     pages: list[PdfPage],
 ) -> AnalysisResponse:
-    """Approve only after revalidating the edited artifact against the exact PDF."""
+    """Rebuild every deterministic field against the source-locked PDF."""
 
     if source_sha256 != result.meta.source_sha256:
         raise ValueError("검수한 PDF SHA-256이 분석 원본과 다릅니다.")
@@ -173,8 +172,6 @@ def approve_result(
         derived_fields=derived_fields,
         sale_price_manwon=result.target_unit.sale_price_manwon,
     )
-    if not validation.passed:
-        raise ValueError("원본 PDF 재검증에 실패한 결과는 승인할 수 없습니다.")
     text_available = sum(len(page.text.strip()) for page in pages) >= 100
     holds = derive_holds(
         normalized,
@@ -182,50 +179,208 @@ def approve_result(
         unit_type_name=result.target_unit.unit_type_name,
         text_available=text_available,
     )
-    approved = result.model_copy(deep=True)
-    approved.payment_schedule = normalized.payment_schedule
-    approved.interim_loan = normalized.interim_loan
-    approved.additional_costs = normalized.additional_costs
-    approved.risk_clauses = normalized.risk_clauses
-    approved.exception_flags = normalized.exception_flags
-    approved.evidence = normalized.evidence
-    approved.validation = validation
-    approved.holds = holds
-    approved.analysis_status = derive_analysis_status(validation, holds)
-    approved.analysis_summary = build_analysis_summary(normalized)
+    prepared = result.model_copy(deep=True)
+    prepared.payment_schedule = normalized.payment_schedule
+    prepared.interim_loan = normalized.interim_loan
+    prepared.additional_costs = normalized.additional_costs
+    prepared.risk_clauses = normalized.risk_clauses
+    prepared.exception_flags = normalized.exception_flags
+    prepared.evidence = normalized.evidence
+    prepared.validation = validation
+    prepared.holds = holds
+    prepared.analysis_status = derive_analysis_status(validation, holds)
+    prepared.analysis_summary = build_analysis_summary(normalized)
+    prepared.review_status = (
+        ReviewStatus.AUTO_EXTRACTED if validation.passed else ReviewStatus.NEEDS_REVIEW
+    )
+    prepared.reviewer = None
+    prepared.reviewed_at = None
+    return prepared
+
+
+def prepare_review_draft(
+    result: AnalysisResponse,
+    *,
+    source_sha256: str,
+    pages: list[PdfPage],
+) -> AnalysisResponse:
+    """Create a source-revalidated draft without granting human-review status."""
+
+    if result.review_status == ReviewStatus.REVIEWED:
+        raise ValueError("REVIEWED 결과는 검수 초안 입력으로 사용할 수 없습니다.")
+    return _revalidate_result(
+        result,
+        source_sha256=source_sha256,
+        pages=pages,
+    )
+
+
+def approve_result(
+    result: AnalysisResponse,
+    *,
+    reviewer: str,
+    source_sha256: str,
+    pages: list[PdfPage],
+) -> AnalysisResponse:
+    """Approve only after revalidating the edited artifact against the exact PDF."""
+
+    reviewer = reviewer.strip()
+    if not reviewer:
+        raise ValueError("검수자 이름이 필요합니다.")
+    approved = _revalidate_result(
+        result,
+        source_sha256=source_sha256,
+        pages=pages,
+    )
+    if not approved.validation.passed:
+        raise ValueError("원본 PDF 재검증에 실패한 결과는 승인할 수 없습니다.")
     approved.review_status = ReviewStatus.REVIEWED
     approved.reviewer = reviewer
     approved.reviewed_at = datetime.now(UTC)
     return approved
 
 
-def write_review_sheet(result: AnalysisResponse, destination: Path) -> None:
+def _review_value(value: object | None) -> str:
+    if value is None:
+        return "미확인(null)"
+    if isinstance(value, bool):
+        return "예" if value else "아니요"
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    return str(value)
+
+
+def _review_ratio(value: float | None) -> str:
+    return "미확인(null)" if value is None else f"{value * 100:g}%"
+
+
+def _review_amount(value: int | None) -> str:
+    return "미확인(null)" if value is None else f"{value:,}만원"
+
+
+def write_review_sheet(
+    result: AnalysisResponse,
+    destination: Path,
+    *,
+    preface: list[str] | None = None,
+) -> None:
     """Write a human-readable checklist without changing the machine result."""
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     lines = [
         f"# 공고문 AI 추출 검수표 — {result.complex_id}",
         "",
-        f"- 분석 상태: `{result.analysis_status}`",
-        f"- 자동 검증: `{'PASS' if result.validation.passed else 'FAIL'}`",
-        f"- PDF SHA-256: `{result.meta.source_sha256}`",
-        f"- 물리 페이지 수: `{result.meta.source_page_count}`",
-        f"- 후보 페이지: `{', '.join(map(str, result.meta.candidate_pages))}`",
-        "",
-        "## 검수 절차",
-        "",
-        "- [ ] 아래 추출값을 선택 주택형·동·층과 대조했다.",
-        "- [ ] 각 근거 문장이 표시된 물리 PDF 페이지에 존재한다.",
-        "- [ ] 선택비용과 분양가 포함비용을 기본 필요자금에 더하지 않았다.",
-        "- [ ] HOLD 질문과 다음 행동이 실제 불확실성과 맞는다.",
-        "",
-        "## 고정 요약",
-        "",
-        result.analysis_summary,
-        "",
-        "## HOLD",
-        "",
     ]
+    if preface:
+        lines.extend([*preface, ""])
+    lines.extend(
+        [
+            f"- 분석 상태: `{result.analysis_status}`",
+            f"- 검수 상태: `{result.review_status}`",
+            f"- unit_type_id: `{result.target_unit.unit_type_id or '-'}`",
+            f"- unit_type_name: `{result.target_unit.unit_type_name or '-'}`",
+            f"- sale_price_manwon: `{result.target_unit.sale_price_manwon or '-'}`",
+            f"- 자동 검증: `{'PASS' if result.validation.passed else 'FAIL'}`",
+            f"- PDF SHA-256: `{result.meta.source_sha256}`",
+            f"- 물리 페이지 수: `{result.meta.source_page_count}`",
+            f"- 후보 페이지: `{', '.join(map(str, result.meta.candidate_pages))}`",
+            "",
+            "## 검수 절차",
+            "",
+            "- [ ] 아래 추출값을 선택 주택형·동·층과 대조했다.",
+            "- [ ] 각 근거 문장이 표시된 물리 PDF 페이지에 존재한다.",
+            "- [ ] 선택비용과 분양가 포함비용을 기본 필요자금에 더하지 않았다.",
+            "- [ ] HOLD 질문과 다음 행동이 실제 불확실성과 맞는다.",
+            "",
+            "## 고정 요약",
+            "",
+            result.analysis_summary,
+            "",
+            "## 납부구조",
+            "",
+            "| 구간 | 총비율 | 총금액 | 기준 | 회차 수 | 납부일·월·문구 |",
+            "| --- | ---: | ---: | --- | ---: | --- |",
+        ]
+    )
+    schedule_rows = (
+        ("계약금", result.payment_schedule.down_payment),
+        ("중도금", result.payment_schedule.interim_payment),
+        ("잔금", result.payment_schedule.balance_payment),
+    )
+    for name, component in schedule_rows:
+        due = component.due_date or component.due_month or component.due_text
+        lines.append(
+            f"| {name} | {_review_ratio(component.total_ratio)} | "
+            f"{_review_amount(component.total_amount_manwon)} | {component.basis} | "
+            f"{len(component.installments)} | {_review_value(due)} |"
+        )
+        for installment in component.installments:
+            installment_due = installment.due_date or installment.due_text
+            lines.append(
+                f"| ↳ {installment.number}회 | {_review_ratio(installment.ratio)} | "
+                f"{_review_amount(installment.amount_manwon)} | - | - | "
+                f"{_review_value(installment_due)} |"
+            )
+
+    loan = result.interim_loan
+    lines.extend(
+        [
+            "",
+            "## 중도금 금융조건",
+            "",
+            f"- 알선 상태: `{loan.arrangement_status}`",
+            f"- 공고문상 알선 비율: `{_review_ratio(loan.arranged_ratio)}`",
+            f"- 공고문상 알선 금액: `{_review_amount(loan.arranged_amount_manwon)}`",
+            f"- 알선 범위 밖 비율: `{_review_ratio(loan.self_funding_ratio)}`",
+            f"- 알선 범위 밖 금액: `{_review_amount(loan.self_funding_amount_manwon)}`",
+            f"- 위 값의 출처: `{_review_value(loan.self_funding_origin)}`",
+            f"- 취급은행: `{', '.join(loan.bank_names) if loan.bank_names else '미확인(null)'}`",
+            f"- 보증기관: `{_review_value(loan.guarantee_provider)}`",
+            f"- 이자 방식: `{loan.interest_type}`",
+            f"- 선납 조건: `{_review_ratio(loan.prepay_requirement_ratio)}`",
+            f"- 상환·대환 조건: `{loan.settlement_requirement}`",
+            f"- 상환·대환 시점: `{_review_value(loan.settlement_deadline_text)}`",
+            "",
+            "## 추가비용",
+            "",
+        ]
+    )
+    if result.additional_costs:
+        for index, cost in enumerate(result.additional_costs, start=1):
+            lines.extend(
+                [
+                    f"### 추가비용 {index} — {cost.name}",
+                    "",
+                    f"- 유형: `{cost.type}`",
+                    f"- 총금액: `{_review_amount(cost.total_amount_manwon)}`",
+                    f"- 필수 여부: `{_review_value(cost.required)}`",
+                    f"- 분양가 포함 여부: `{_review_value(cost.included_in_sale_price)}`",
+                    f"- 적용 주택형: `{_review_value(cost.applicable_unit_type)}`",
+                    f"- 비고: `{_review_value(cost.note)}`",
+                ]
+            )
+            for payment in cost.payments:
+                payment_due = payment.due_date or payment.due_text
+                lines.append(
+                    f"- 납부 {payment.number}: `{payment.stage}` / "
+                    f"`{_review_amount(payment.amount_manwon)}` / "
+                    f"`{_review_value(payment_due)}`"
+                )
+            lines.append("")
+    else:
+        lines.extend(["- 추출된 추가비용 없음(원문 미기재인지 추출 누락인지 확인 필요)", ""])
+
+    lines.extend(["## 위험조항", ""])
+    if result.risk_clauses:
+        for clause in result.risk_clauses:
+            pages = ", ".join(str(item.page) for item in clause.evidence)
+            lines.append(
+                f"- `{clause.code}` / 영향 구간 `{clause.impact_stage}` / "
+                f"근거 p.{pages} — {clause.message} 다음 행동: {clause.next_action}"
+            )
+    else:
+        lines.append("- 없음(원문에 위험조항이 없는지 추출 누락인지 확인 필요)")
+    lines.extend(["", "## HOLD", ""])
     if result.holds:
         for hold in result.holds:
             lines.append(f"- `{hold.reason_code}` — {hold.message} 다음 행동: {hold.next_action}")

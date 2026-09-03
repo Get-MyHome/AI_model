@@ -119,3 +119,52 @@ async def test_review_from_old_extractor_is_never_selected(tmp_path: Path, golde
     )
 
     assert actual is None
+
+
+async def test_duplicate_exact_reviews_fail_closed(tmp_path: Path, golden_cases) -> None:
+    case = golden_cases["2026000358"]
+    automatic = await _automatic_result(tmp_path, case)
+    save_result(_reviewed_copy(automatic), tmp_path / "first.json")
+    save_result(_reviewed_copy(automatic), tmp_path / "second.json")
+    request = AnalyzeRequest(
+        complex_id=case.complex_id,
+        pdf_url="https://example.com/source.pdf",
+        unit_type_id="01",
+        unit_type_name=case.unit_type_name,
+        sale_price_manwon=case.sale_price_manwon,
+    )
+
+    actual = find_reviewed_artifact(
+        request=request,
+        source_sha256=automatic.meta.source_sha256,
+        reviewed_artifact_dir=tmp_path,
+        schema_version="v0.3",
+        extractor_version=automatic.meta.extractor_version,
+    )
+
+    assert actual is None
+
+
+async def test_naive_review_timestamp_is_never_selected(tmp_path: Path, golden_cases) -> None:
+    case = golden_cases["2026000358"]
+    automatic = await _automatic_result(tmp_path, case)
+    reviewed = _reviewed_copy(automatic)
+    reviewed.reviewed_at = datetime(2026, 9, 4)
+    save_result(reviewed, tmp_path / "naive.json")
+    request = AnalyzeRequest(
+        complex_id=case.complex_id,
+        pdf_url="https://example.com/source.pdf",
+        unit_type_id="01",
+        unit_type_name=case.unit_type_name,
+        sale_price_manwon=case.sale_price_manwon,
+    )
+
+    actual = find_reviewed_artifact(
+        request=request,
+        source_sha256=automatic.meta.source_sha256,
+        reviewed_artifact_dir=tmp_path,
+        schema_version="v0.3",
+        extractor_version=automatic.meta.extractor_version,
+    )
+
+    assert actual is None

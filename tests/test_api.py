@@ -12,6 +12,10 @@ from get_myhome_ai.pdf_text import DownloadedPdf
 from get_myhome_ai.pipeline import AnalysisPipeline
 from get_myhome_ai.providers.fixture import FixtureExtractor
 from get_myhome_ai.review import approve_result, save_result
+from get_myhome_ai.runtime_source import (
+    RUNNING_SOURCE_FINGERPRINT_SHA256,
+    SOURCE_FINGERPRINT_ALGORITHM,
+)
 from get_myhome_ai.settings import Settings
 
 
@@ -55,7 +59,13 @@ def test_health_ready_and_analyze_contract(golden_cases) -> None:
     app = create_app(settings=settings, pipeline=pipeline)
 
     with TestClient(app) as client:
-        assert client.get("/health").json()["status"] == "ok"
+        health = client.get("/health").json()
+        assert health == {
+            "status": "ok",
+            "version": "0.3.0",
+            "source_fingerprint_algorithm": SOURCE_FINGERPRINT_ALGORITHM,
+            "source_fingerprint_sha256": RUNNING_SOURCE_FINGERPRINT_SHA256,
+        }
         readiness = client.get("/ready").json()
         assert readiness["ready"] is True
 

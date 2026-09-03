@@ -27,6 +27,15 @@ INTEREST_SETTLEMENT_SOURCE = re.compile(
     r")",
     re.DOTALL,
 )
+ADDITIONAL_COST_SECTION_SOURCE = re.compile(
+    r"(?:"
+    r"발코니\s*확장(?:공사)?비"
+    r"|발코니\s*확장\s*공사비"
+    r"|추가\s*선택\s*품목"
+    r"|유상\s*옵션"
+    r"|시스템\s*에어컨"
+    r")"
+)
 
 
 def _issue(
@@ -333,6 +342,19 @@ def validate_draft(
 
     loan = draft.interim_loan
     source_text = "\n".join(page.text for page in pages)
+    if (
+        sale_price_manwon is not None
+        and not draft.additional_costs
+        and ADDITIONAL_COST_SECTION_SOURCE.search(source_text)
+    ):
+        issues.append(
+            _issue(
+                IssueSeverity.ERROR,
+                "ADDITIONAL_COST_SECTION_UNEXTRACTED",
+                "추가비용 관련 원문이 있으나 선택 주택형의 추가비용을 추출하지 못했습니다.",
+                "/additional_costs",
+            )
+        )
     if INTEREST_FREE_SOURCE.search(source_text) and INTEREST_SETTLEMENT_SOURCE.search(source_text):
         issues.append(
             _issue(
@@ -606,12 +628,16 @@ def validate_draft(
                     f"/additional_costs/{index}/payments",
                 )
             )
-        if cost.total_amount_manwon is None or cost.required is None:
+        if (
+            cost.total_amount_manwon is None
+            or cost.required is None
+            or cost.included_in_sale_price is None
+        ):
             issues.append(
                 _issue(
                     IssueSeverity.WARNING,
                     "ADDITIONAL_COST_INCOMPLETE",
-                    "추가비용의 금액 또는 필수 여부가 불명확합니다.",
+                    "추가비용의 금액·필수 여부·분양가 포함 여부 중 일부가 불명확합니다.",
                     f"/additional_costs/{index}",
                 )
             )

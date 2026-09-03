@@ -178,6 +178,91 @@ def test_unaligned_model_cost_schedule_is_removed(golden_cases) -> None:
     assert actual.additional_costs[0].payments == []
 
 
+def test_sub_manwon_cost_payments_are_not_rounded_into_false_exact_values(
+    golden_cases,
+) -> None:
+    draft = golden_cases["2026000358"].expected.model_copy(deep=True)
+    draft.additional_costs = [
+        AdditionalCost(
+            type=AdditionalCostType.SYSTEM_AIR_CONDITIONER,
+            name="시스템 에어컨",
+            total_amount_manwon=7_150_000,
+            required=False,
+            included_in_sale_price=False,
+            applicable_unit_type="39A",
+            payments=[
+                AdditionalCostPayment(
+                    number=1,
+                    stage=PaymentStage.CONTRACT,
+                    amount_manwon=715_000,
+                    due_date=None,
+                    due_text="계약 시",
+                ),
+                AdditionalCostPayment(
+                    number=2,
+                    stage=PaymentStage.BALANCE,
+                    amount_manwon=6_435_000,
+                    due_date=None,
+                    due_text="입주지정일",
+                ),
+            ],
+            note=None,
+        )
+    ]
+    page = _page(
+        40,
+        "시스템 에어컨\n주택형 총 금액 계약금 잔금\n"
+        "39A 7,150,000 715,000 6,435,000",
+        "cost",
+    )
+
+    actual = ground_ollama_draft(
+        draft,
+        pages=[page],
+        unit_type_name="39A",
+        sale_price_manwon=103_500,
+    )
+
+    assert actual.additional_costs[0].total_amount_manwon == 715
+    assert [item.amount_manwon for item in actual.additional_costs[0].payments] == [
+        None,
+        None,
+    ]
+
+
+def test_sub_manwon_supply_payments_abstain_while_exact_values_are_preserved(
+    golden_cases,
+) -> None:
+    draft = golden_cases["2026000358"].expected.model_copy(deep=True)
+    draft.evidence = []
+    page = _page(
+        8,
+        "■ 공급금액 및 납부일정 계약금(5%) 중도금(60%) 잔금(35%) "
+        "1차(10%) 2차(10%) 3차(10%) 4차(10%) 5차(10%) 6차(10%) "
+        "2027.01.10. 2027.07.10. 2028.01.10. 2028.07.10. "
+        "2029.01.10. 2029.07.10. 입주지정일\n"
+        "586,300,000 29,315,000 58,630,000 58,630,000 58,630,000 "
+        "58,630,000 58,630,000 58,630,000 205,205,000",
+        "payment",
+        "balance",
+    )
+
+    actual = ground_ollama_draft(
+        draft,
+        pages=[page],
+        unit_type_name="84B",
+        sale_price_manwon=58_630,
+    )
+
+    assert actual.payment_schedule.down_payment.total_amount_manwon is None
+    assert actual.payment_schedule.down_payment.installments[0].amount_manwon is None
+    assert actual.payment_schedule.interim_payment.total_amount_manwon == 35_178
+    assert [
+        item.amount_manwon for item in actual.payment_schedule.interim_payment.installments
+    ] == [5_863] * 6
+    assert actual.payment_schedule.balance_payment.total_amount_manwon is None
+
+
 def test_payment_grounder_accepts_contiguous_cha_installment_headers(golden_cases) -> None:
     draft = golden_cases["2026000358"].expected.model_copy(deep=True)
     draft.evidence = []

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from pydantic import AnyHttpUrl, TypeAdapter
 
+from get_myhome_ai.captured_inventory import build_captured_inventory
 from get_myhome_ai.evaluation import evaluate_case, summarize_evaluations
 from get_myhome_ai.fixtures import load_golden_cases
 from get_myhome_ai.models import AnalyzeRequest
@@ -18,6 +19,11 @@ from get_myhome_ai.review import (
     load_result,
     save_result,
     write_review_sheet,
+)
+from get_myhome_ai.review_batch import (
+    approve_review_batch,
+    prepare_review_batch,
+    validate_review_batch_approval,
 )
 from get_myhome_ai.settings import Settings
 
@@ -62,6 +68,55 @@ def _parser() -> argparse.ArgumentParser:
         "--confirm-source-reviewed",
         action="store_true",
         help="PDF 원문을 실제로 확인했음을 명시합니다.",
+    )
+
+    prepare_batch = commands.add_parser(
+        "prepare-review-batch",
+        help="보유 자료의 검수 초안·체크리스트를 준비합니다.",
+    )
+    prepare_batch.add_argument("--inventory", type=Path, required=True)
+    prepare_batch.add_argument(
+        "--auto-artifact-dir",
+        type=Path,
+        action="append",
+        required=True,
+        help="자동 추출 JSON 디렉터리. 여러 번 지정할 수 있습니다.",
+    )
+    prepare_batch.add_argument("--reference-dir", type=Path)
+    prepare_batch.add_argument("--output-dir", type=Path, required=True)
+
+    captured_inventory = commands.add_parser(
+        "build-captured-inventory",
+        help="운영 review capture를 exact 검수 인벤토리로 변환합니다.",
+    )
+    captured_inventory.add_argument("--capture-dir", type=Path, required=True)
+    captured_inventory.add_argument("--output", type=Path, required=True)
+
+    validate_batch = commands.add_parser(
+        "validate-review-approval",
+        help="명시적 배치 승인을 기록하기 전에 원본·초안·매니페스트를 검증합니다.",
+    )
+    validate_batch.add_argument("--draft-manifest", type=Path, required=True)
+    validate_batch.add_argument("--approval-manifest", type=Path, required=True)
+    validate_batch.add_argument("--reviewer", required=True)
+    validate_batch.add_argument(
+        "--confirm-approval-manifest",
+        action="store_true",
+        help="매니페스트의 APPROVE 항목을 검수자가 명시적으로 확인했습니다.",
+    )
+
+    approve_batch = commands.add_parser(
+        "approve-review-batch",
+        help="검증된 승인 매니페스트의 항목만 REVIEWED로 저장합니다.",
+    )
+    approve_batch.add_argument("--draft-manifest", type=Path, required=True)
+    approve_batch.add_argument("--approval-manifest", type=Path, required=True)
+    approve_batch.add_argument("--output-dir", type=Path, required=True)
+    approve_batch.add_argument("--reviewer", required=True)
+    approve_batch.add_argument(
+        "--confirm-approval-manifest",
+        action="store_true",
+        help="매니페스트의 APPROVE 항목을 검수자가 명시적으로 확인했습니다.",
     )
 
     evaluate = commands.add_parser("evaluate", help="실제 PDF 골든셋을 회귀 평가합니다.")
@@ -168,6 +223,8 @@ def run() -> None:
     if args.command == "review":
         if not args.confirm_source_reviewed:
             parser.error("review에는 --confirm-source-reviewed가 필요합니다.")
+        if args.output.exists():
+            parser.error("기존 검수 결과를 보호하기 위해 새 --output 경로가 필요합니다.")
         downloaded = load_pdf_from_path(args.pdf, settings)
         pages = extract_pdf_pages(downloaded.content, settings)
         reviewed = approve_result(
@@ -178,6 +235,52 @@ def run() -> None:
         )
         save_result(reviewed, args.output)
         print(args.output)
+        return
+    if args.command == "prepare-review-batch":
+        manifest = prepare_review_batch(
+            inventory_path=args.inventory,
+            auto_artifact_dirs=args.auto_artifact_dir,
+            reference_dir=args.reference_dir,
+            output_dir=args.output_dir,
+            settings=settings,
+        )
+        print(args.output_dir / "review-draft-manifest.json")
+        print(args.output_dir / "review-approval-manifest.template.json")
+        print(
+            f"drafts={manifest.summary.draft_count} "
+            f"version_compatible={manifest.summary.approval_eligible_draft_count} "
+            f"unavailable={manifest.summary.unavailable_target_count}"
+        )
+        return
+    if args.command == "build-captured-inventory":
+        payload = build_captured_inventory(
+            capture_dir=args.capture_dir,
+            output_path=args.output,
+        )
+        print(args.output)
+        print(f"targets={len(payload['targets'])}")
+        return
+    if args.command == "validate-review-approval":
+        validated = validate_review_batch_approval(
+            draft_manifest_path=args.draft_manifest,
+            approval_manifest_path=args.approval_manifest,
+            reviewer=args.reviewer,
+            settings=settings,
+            explicit_confirmation=args.confirm_approval_manifest,
+        )
+        print(f"validated={len(validated)}")
+        return
+    if args.command == "approve-review-batch":
+        receipt = approve_review_batch(
+            draft_manifest_path=args.draft_manifest,
+            approval_manifest_path=args.approval_manifest,
+            output_dir=args.output_dir,
+            reviewer=args.reviewer,
+            settings=settings,
+            explicit_confirmation=args.confirm_approval_manifest,
+        )
+        print(args.output_dir / "review-approval-receipt.json")
+        print(f"approved={receipt.approved_count}")
         return
     if args.command == "analyze-file":
         raise SystemExit(asyncio.run(_analyze_file(args, settings)))

@@ -50,7 +50,7 @@ def find_reviewed_artifact(
             continue
         if not candidate.reviewer or not candidate.reviewer.strip():
             continue
-        if candidate.reviewed_at is None:
+        if candidate.reviewed_at is None or candidate.reviewed_at.utcoffset() is None:
             continue
         if not candidate.validation.passed:
             continue
@@ -66,6 +66,8 @@ def find_reviewed_artifact(
             continue
         matches.append(candidate)
 
-    if not matches:
+    # Multiple files for one exact identity are an integrity conflict, not a
+    # reason to guess that the newest timestamp is authoritative.
+    if len(matches) != 1:
         return None
-    return max(matches, key=lambda item: item.reviewed_at)
+    return matches[0]

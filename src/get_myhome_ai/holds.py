@@ -210,6 +210,7 @@ def derive_holds(
     additional_cost_issue_codes = {
         "ADDITIONAL_COST_INCOMPLETE",
         "ADDITIONAL_COST_SCHEDULE_MISSING",
+        "ADDITIONAL_COST_SECTION_UNEXTRACTED",
     }
     if any(issue.code in additional_cost_issue_codes for issue in validation.issues):
         codes.append(HoldReasonCode.ADDITIONAL_COST_UNKNOWN)

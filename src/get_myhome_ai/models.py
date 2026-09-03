@@ -305,6 +305,8 @@ class AnalysisResponse(StrictModel):
 class HealthResponse(StrictModel):
     status: str
     version: str
+    source_fingerprint_algorithm: str
+    source_fingerprint_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 
 
 class ReadinessResponse(StrictModel):

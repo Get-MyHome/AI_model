@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     ollama_max_attempts: int = Field(default=3, ge=1, le=3)
     # The extraction schema, Korean source text, and bounded JSON answer can
     # exceed 8K tokens on dense payment tables. 12K still fully offloads the
-    # default Qwen3 8B model on the project's 8GB GPU while avoiding Ollama's
+    # default Qwen3.5 9B model on the project's 8GB GPU while avoiding Ollama's
     # silent context shifting observed at 8K.
     ollama_num_ctx: int = Field(default=12288, ge=2048)
     ollama_num_predict: int = Field(default=4096, ge=256)
@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     fixture_dir: Path = Path("tests/fixtures/golden")
     auto_artifact_dir: Path = Path("artifacts/auto")
     reviewed_artifact_dir: Path = Path("artifacts/reviewed")
+    # Optional, server-local intake for exact source-locked human review.
+    # It stores public PDF bytes and target metadata, never the pre-signed URL.
+    review_capture_dir: Path | None = None
 
     @property
     def allowed_pdf_hosts(self) -> set[str]:

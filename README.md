@@ -49,6 +49,8 @@ get-myhome-ai analyze-file \
 ```
 
 자동 추출 JSON과 검수표는 `artifacts/auto/`에 생성됩니다. PDF 원문을 대조해 승인된 `REVIEWED` 결과만 사용자 자금판정에 사용할 수 있습니다.
+보유 자료 전체의 검수 초안을 안전하게 준비하고 명시적으로 승인하는 방법은
+[배치 검수 절차](docs/BATCH_REVIEW.md)를 참고하세요.
 
 ## HTTP API
 
@@ -60,7 +62,7 @@ get-myhome-ai serve --host 0.0.0.0 --port 9000
 | --- | --- | --- |
 | `POST` | `/api/analyze` | PDF 금융조건 분석 |
 | `POST` | `/api/funding-stress` | REVIEWED 검수본 기반 선택형 스트레스 분석 |
-| `GET` | `/health` | 프로세스 상태 확인 |
+| `GET` | `/health` | 프로세스 상태·실행 Python 소스 SHA-256 확인 |
 | `GET` | `/ready` | 실행 준비 상태 확인 |
 
 외부 분석 요청은 `Authorization: Bearer <AI_API_KEY>` 헤더를 사용하며 실제 키는 저장소에 커밋하지 않습니다.
@@ -78,6 +80,11 @@ get-myhome-ai serve --host 0.0.0.0 --port 9000
 ```
 
 문서 공통 분석에는 `complex_id`, `pdf_url`만 필요합니다. 주택형을 지정할 때는 나머지 세 필드를 모두 보내야 하며 금액 단위는 만 원입니다. 응답은 납부 일정, 중도금 대출조건, 추가비용, 위험조항, HOLD, 근거와 검수 상태를 포함합니다.
+
+운영 환경에서 `REVIEW_CAPTURE_DIR`를 설정하면 exact `REVIEWED` 검수본이 없는 요청의
+공식 PDF와 `(complex_id, unit_type_id, unit_type_name, sale_price_manwon)`을 서버 로컬
+검수 대기열에 보관합니다. 만료되는 pre-signed URL과 인증키는 저장하지 않습니다.
+이 기능은 검수 자료를 확보할 뿐 자동으로 `REVIEWED`를 부여하지 않습니다.
 
 ## 검증
 
@@ -99,3 +106,9 @@ python scripts/evaluate_risk_settlement.py
 - [HOLD 코드](docs/HOLD_CODES.md)
 - [골든셋](docs/GOLDEN_SET_v0.3.md)
 - [스트레스 분석 API](docs/FUNDING_STRESS_API.md)
+- [보유 자료 인벤토리](docs/OWNED_CORPUS_INVENTORY.md)
+- [주택형별 자동 추출](docs/OWNED_CORPUS_EXTRACTION.md)
+- [2026-09-04 보유 공고 전수처리 상태](docs/OWNED_CORPUS_STATUS_2026-09-04.md)
+- [2026-09-04 exact 주택형 엄격 검수 감사](docs/STRICT_REVIEW_AUDIT_2026-09-04.md)
+- [보유 자료 배치 검수](docs/BATCH_REVIEW.md)
+- [REVIEWED 커버리지·런타임 인계](docs/REVIEW_COVERAGE_HANDOFF.md)
