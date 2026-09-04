@@ -4,7 +4,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_FLOOR, Decimal
 
 from get_myhome_ai.errors import FundingStressUnavailableError
 from get_myhome_ai.models import (
@@ -38,7 +38,7 @@ from get_myhome_ai.stress_models import (
     ThresholdStatus,
 )
 
-CALCULATOR_VERSION = "0.1.0"
+CALCULATOR_VERSION = "0.1.2"
 BPS_DENOMINATOR = 10_000
 THRESHOLD_RESOLUTION_BPS = 1
 
@@ -51,18 +51,18 @@ class _Obligations:
     conditional: bool
 
 
-def _ratio_amount(ratio: float, sale_price_manwon: int) -> int:
-    return int(
-        (Decimal(str(ratio)) * Decimal(sale_price_manwon)).quantize(
-            Decimal("1"), rounding=ROUND_HALF_UP
-        )
-    )
+def _ratio_amount(ratio: float, sale_price_manwon: int) -> int | None:
+    amount = Decimal(str(ratio)) * Decimal(sale_price_manwon)
+    integral = amount.to_integral_value()
+    if amount != integral:
+        return None
+    return int(integral)
 
 
 def _bps_amount(ratio_bps: int, sale_price_manwon: int) -> int:
     return int(
         (Decimal(ratio_bps) * Decimal(sale_price_manwon) / Decimal(BPS_DENOMINATOR)).quantize(
-            Decimal("1"), rounding=ROUND_HALF_UP
+            Decimal("1"), rounding=ROUND_FLOOR
         )
     )
 
@@ -74,7 +74,7 @@ def _amount_bps(amount_manwon: int, sale_price_manwon: int) -> int:
         BPS_DENOMINATOR,
         int(
             (Decimal(amount_manwon) * Decimal(BPS_DENOMINATOR) / sale_price_manwon).quantize(
-                Decimal("1"), rounding=ROUND_HALF_UP
+                Decimal("1"), rounding=ROUND_FLOOR
             )
         ),
     )
@@ -82,6 +82,10 @@ def _amount_bps(amount_manwon: int, sale_price_manwon: int) -> int:
 
 def _component_amount(component: PaymentComponent, sale_price_manwon: int) -> int | None:
     if component.total_amount_manwon is not None:
+        if component.total_ratio is not None:
+            ratio_amount = _ratio_amount(component.total_ratio, sale_price_manwon)
+            if ratio_amount is None or ratio_amount != component.total_amount_manwon:
+                return None
         return component.total_amount_manwon
     if component.total_ratio is not None:
         return _ratio_amount(component.total_ratio, sale_price_manwon)
@@ -314,7 +318,7 @@ def _maximum_interim_bps(analysis: AnalysisResponse, sale_price_manwon: int) -> 
     if component.total_ratio is not None:
         return int(
             (Decimal(str(component.total_ratio)) * BPS_DENOMINATOR).quantize(
-                Decimal("1"), rounding=ROUND_HALF_UP
+                Decimal("1"), rounding=ROUND_FLOOR
             )
         )
     if component.total_amount_manwon is not None:
@@ -329,7 +333,7 @@ def _document_cap_bps(analysis: AnalysisResponse, sale_price_manwon: int) -> int
     if loan.arranged_ratio is not None:
         return int(
             (Decimal(str(loan.arranged_ratio)) * BPS_DENOMINATOR).quantize(
-                Decimal("1"), rounding=ROUND_HALF_UP
+                Decimal("1"), rounding=ROUND_FLOOR
             )
         )
     if loan.arranged_amount_manwon is not None:
@@ -942,7 +946,8 @@ def calculate_funding_stress(
         holds=_dedupe_holds(calculation_holds),
         assumptions=[
             "중도금 비율은 분양가 대비 bps(100bps=1%p)로 표시합니다.",
-            "비율 금액 변환은 만 원 단위 ROUND_HALF_UP을 사용합니다.",
+            "의무금액은 정수 만 원으로 정확히 표현될 때만 사용하고, "
+            "가용 대출금과 공고문 상한은 보수적으로 내림 처리합니다.",
             "대출 경로는 대안이며 서로 합산하지 않습니다.",
             "보유 현금은 계약금 납부 전 스냅샷이며 이미 납부한 금액을 소급 추정하지 않습니다.",
             "월 저축액은 부족액 회복 개월 계산에만 사용하고 현금흐름에 누적하지 않습니다.",

@@ -62,7 +62,7 @@ def test_health_ready_and_analyze_contract(golden_cases) -> None:
         health = client.get("/health").json()
         assert health == {
             "status": "ok",
-            "version": "0.3.0",
+            "version": "0.3.3",
             "source_fingerprint_algorithm": SOURCE_FINGERPRINT_ALGORITHM,
             "source_fingerprint_sha256": RUNNING_SOURCE_FINGERPRINT_SHA256,
         }

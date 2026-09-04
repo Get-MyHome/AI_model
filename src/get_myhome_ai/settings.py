@@ -12,9 +12,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     app_name: str = "get-myhome-ai"
-    app_version: str = "0.3.0"
+    app_version: str = "0.3.3"
     schema_version: str = "v0.3"
-    extractor_version: str = "0.2.0"
+    extractor_version: str = "0.2.3"
     prompt_version: str = "extract-v1"
     ai_api_key: Annotated[SecretStr, Field(min_length=32)] | None = None
     enable_docs: bool = False

@@ -79,6 +79,11 @@ HOLD_TEXT: dict[HoldReasonCode, tuple[str, str]] = {
         "추가비용의 금액 또는 납부 시점이 불명확해요.",
         "선택품목 계약서에서 총액과 회차를 확인하세요.",
     ),
+    HoldReasonCode.ADDITIONAL_COST_SCOPE_LIMITED: (
+        "공고문에 선택 유상옵션 안내가 있으며, 이번 분석은 전체 선택품목 목록을 보장하지 않아요.",
+        "선택할 시스템에어컨·가전·가구 옵션이 있으면 해당 금액과 "
+        "납부일정을 추가해 다시 계산하세요.",
+    ),
     HoldReasonCode.TABLE_REVIEW_REQUIRED: (
         "표 구조를 자동으로 확정하기 어려워요.",
         "표시된 공고문 페이지를 사람이 대조하세요.",
@@ -104,10 +109,14 @@ def _make(code: HoldReasonCode) -> Hold:
     kind = (
         HoldKind.PERSONAL_REVIEW if code in personal_review_codes else HoldKind.DOCUMENT_UNCERTAINTY
     )
+    non_blocking_codes = {
+        HoldReasonCode.INDIVIDUAL_REVIEW_REQUIRED,
+        HoldReasonCode.ADDITIONAL_COST_SCOPE_LIMITED,
+    }
     return Hold(
         reason_code=code,
         kind=kind,
-        blocking=kind == HoldKind.DOCUMENT_UNCERTAINTY,
+        blocking=code not in non_blocking_codes,
         message=message,
         next_action=next_action,
     )
@@ -206,6 +215,8 @@ def derive_holds(
         codes.append(HoldReasonCode.UNIT_SELECTION_REQUIRED)
     if ExceptionFlag.INDIVIDUAL_REVIEW_NOTED in flags:
         codes.append(HoldReasonCode.INDIVIDUAL_REVIEW_REQUIRED)
+    if ExceptionFlag.ADDITIONAL_COST_SCOPE_LIMITED in flags:
+        codes.append(HoldReasonCode.ADDITIONAL_COST_SCOPE_LIMITED)
 
     additional_cost_issue_codes = {
         "ADDITIONAL_COST_INCOMPLETE",

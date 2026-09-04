@@ -82,7 +82,7 @@ async def test_ollama_uses_three_bounded_structured_calls(golden_cases) -> None:
             item = expected.additional_costs[0]
             finding = item.model_dump(mode="json")
             evidence = next(
-                item for item in expected.evidence if item.field.startswith("/additional_costs")
+                item for item in expected.evidence if item.field == "/additional_costs/0"
             )
             finding["evidence_page"] = evidence.page
             finding["evidence_raw_text"] = evidence.raw_text

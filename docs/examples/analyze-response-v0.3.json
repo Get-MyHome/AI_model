@@ -114,36 +114,11 @@
   },
   "additional_costs": [
     {
-      "type": "SYSTEM_AIR_CONDITIONER",
-      "name": "시스템 에어컨",
-      "total_amount_manwon": 715,
-      "required": null,
-      "included_in_sale_price": null,
-      "applicable_unit_type": "59A",
-      "payments": [
-        {
-          "number": 1,
-          "stage": "CONTRACT",
-          "amount_manwon": 72,
-          "due_date": null,
-          "due_text": "계약 시"
-        },
-        {
-          "number": 2,
-          "stage": "BALANCE",
-          "amount_manwon": 644,
-          "due_date": null,
-          "due_text": "입주지정일"
-        }
-      ],
-      "note": null
-    },
-    {
       "type": "BALCONY_EXTENSION",
-      "name": "바닥 (전실 광폭 강마루)",
+      "name": "발코니 확장비",
       "total_amount_manwon": 1870,
-      "required": null,
-      "included_in_sale_price": null,
+      "required": false,
+      "included_in_sale_price": false,
       "applicable_unit_type": "59A",
       "payments": [
         {
@@ -151,7 +126,7 @@
           "stage": "CONTRACT",
           "amount_manwon": 187,
           "due_date": null,
-          "due_text": "계약 시"
+          "due_text": "계약시"
         },
         {
           "number": 2,
@@ -161,7 +136,7 @@
           "due_text": "입주지정일"
         }
       ],
-      "note": null
+      "note": "59A 주택형 기준 선택비용"
     }
   ],
   "risk_clauses": [
@@ -170,7 +145,7 @@
       "impact_stage": "INTERIM",
       "origin": "EXTRACTED",
       "message": "사업주체의 중도금 대출 알선은 실제 실행을 보장하지 않습니다.",
-      "next_action": "알선 확정 여부와 불가 시 직접 납부 일정을 시행사에 확인하세요.",
+      "next_action": "알선 확정 여부와 불가 시 별도 조달 일정을 시행사에 확인하세요.",
       "evidence": [
         {
           "field": "/risk_clauses/0",
@@ -188,8 +163,8 @@
       "evidence": [
         {
           "field": "/risk_clauses/1",
-          "page": 31,
-          "raw_text": "계약자 중도금 대출안내\n - 사업주체에서 알선한 금융기관을 통해 중도금 대출 신청이 가능하나, 관련 정책 및 대출상품의 종류, 개인의 사정 및 자격가능여부 등으로 대출한도가 계약자별로 상이"
+          "page": 7,
+          "raw_text": "본인의 사유(보증제한, 신용불량 등)로 인하여 대출이 불가"
         }
       ]
     },
@@ -258,16 +233,17 @@
       "next_action": "소득·기존 대출을 기준으로 실제 한도를 금융기관에 확인하세요."
     },
     {
-      "reason_code": "ADDITIONAL_COST_UNKNOWN",
+      "reason_code": "ADDITIONAL_COST_SCOPE_LIMITED",
       "kind": "DOCUMENT_UNCERTAINTY",
-      "blocking": true,
-      "message": "추가비용의 금액 또는 납부 시점이 불명확해요.",
-      "next_action": "선택품목 계약서에서 총액과 회차를 확인하세요."
+      "blocking": false,
+      "message": "공고문에 선택 유상옵션 안내가 있으며, 이번 분석은 전체 선택품목 목록을 보장하지 않아요.",
+      "next_action": "선택할 시스템에어컨·가전·가구 옵션이 있으면 해당 금액과 납부일정을 추가해 다시 계산하세요."
     }
   ],
   "exception_flags": [
     "LOAN_MEDIATION_NOT_GUARANTEED",
     "INDIVIDUAL_REVIEW_NOTED",
+    "ADDITIONAL_COST_SCOPE_LIMITED",
     "SELF_FUNDING_REQUIRED"
   ],
   "evidence": [
@@ -352,6 +328,21 @@
       "raw_text": "중도금 대출 “이자후불제”"
     },
     {
+      "field": "/additional_costs/0",
+      "page": 33,
+      "raw_text": "59A                18,700,000               1,870,000                16,830,000                -"
+    },
+    {
+      "field": "/additional_costs/0/required",
+      "page": 34,
+      "raw_text": "발코니 확장 미선택으로 개별확장 세대 및 마감재를 개별 시공하는 세대"
+    },
+    {
+      "field": "/additional_costs/0/included_in_sale_price",
+      "page": 34,
+      "raw_text": "발코니 확장 공사비는 공동주택 공급금액과 별도로서"
+    },
+    {
       "field": "/interim_loan/settlement_requirement",
       "page": 31,
       "raw_text": "계약자는 입주 전까지 대출금을 상환하거나 담보대출로 전환"
@@ -367,46 +358,33 @@
       "raw_text": "대출기간 만료시(준공 후 미입주 등) 금융기관의 대출기간 연장"
     },
     {
-      "field": "/additional_costs/0",
-      "page": 35,
-      "raw_text": "59A      거실+침실1+침실2+침실3        7,150,000                              715,000                      6,435,000"
-    },
-    {
-      "field": "/additional_costs/1",
-      "page": 33,
-      "raw_text": "59A                18,700,000               1,870,000                16,830,000                -"
-    },
-    {
       "field": "/exception_flags",
       "page": 7,
       "raw_text": "알선한 대출취급기관의 중도금 대출을 통해 중도금을 납입할 수 있으나, 중도금 대출 관련 정부 및 금융기관의 정책(중도금\n 대출의 제한 등), 대출기관의 규제 등으로 인해 대출 알선이 불가할 수"
     },
     {
       "field": "/exception_flags",
-      "page": 31,
-      "raw_text": "계약자 중도금 대출안내\n - 사업주체에서 알선한 금융기관을 통해 중도금 대출 신청이 가능하나, 관련 정책 및 대출상품의 종류, 개인의 사정 및 자격가능여부 등으로 대출한도가 계약자별로 상이"
+      "page": 7,
+      "raw_text": "본인의 사유(보증제한, 신용불량 등)로 인하여 대출이 불가"
+    },
+    {
+      "field": "/exception_flags",
+      "page": 7,
+      "raw_text": "추가 선택품목(가구, 가전 등 유상옵션)"
+    },
+    {
+      "field": "/additional_costs/0/payments",
+      "page": 33,
+      "raw_text": "계약금(10%)                 잔금(90%)\n      약식 표기(타입)               공급가액                                                                      비고\n                                                         계약시                    입주지정일"
     }
   ],
   "validation": {
     "passed": true,
-    "issues": [
-      {
-        "severity": "WARNING",
-        "code": "ADDITIONAL_COST_INCOMPLETE",
-        "field": "/additional_costs/0",
-        "message": "추가비용의 금액 또는 필수 여부가 불명확합니다."
-      },
-      {
-        "severity": "WARNING",
-        "code": "ADDITIONAL_COST_INCOMPLETE",
-        "field": "/additional_costs/1",
-        "message": "추가비용의 금액 또는 필수 여부가 불명확합니다."
-      }
-    ],
+    "issues": [],
     "derived_fields": [
       "/payment_schedule/down_payment/basis",
+      "/payment_schedule/interim_payment/basis",
       "/payment_schedule/balance_payment/basis",
-      "/payment_schedule/balance_payment/total_ratio",
       "/interim_loan/self_funding_ratio",
       "/interim_loan/self_funding_origin",
       "/exception_flags"
@@ -414,7 +392,7 @@
   },
   "meta": {
     "schema_version": "v0.3",
-    "extractor_version": "0.2.0",
+    "extractor_version": "0.2.3",
     "prompt_version": "extract-v1",
     "provider": "ollama",
     "model": "qwen3.5:9b",

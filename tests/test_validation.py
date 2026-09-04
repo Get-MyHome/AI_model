@@ -119,6 +119,30 @@ def test_parent_loan_quote_cannot_prove_unrelated_fields(golden_cases) -> None:
     assert "/interim_loan/interest_note" in missing_fields
 
 
+def test_additional_cost_amount_row_cannot_prove_header_due_fields(golden_cases) -> None:
+    case = golden_cases["2026000358"]
+    draft = case.expected.model_copy(deep=True)
+    draft.evidence = [
+        item
+        for item in draft.evidence
+        if item.field != "/additional_costs/0/payments"
+    ]
+    normalized, derived = normalize_draft(draft)
+
+    report = validate_draft(
+        normalized,
+        pages=synthetic_pages(case),
+        derived_fields=derived,
+        sale_price_manwon=case.sale_price_manwon,
+    )
+
+    missing_fields = {issue.field for issue in report.issues if issue.code == "EVIDENCE_MISSING"}
+    assert "/additional_costs/0/payments/0/amount_manwon" not in missing_fields
+    assert "/additional_costs/0/payments/0/stage" in missing_fields
+    assert "/additional_costs/0/payments/0/due_text" in missing_fields
+    assert not report.passed
+
+
 def test_missing_balance_due_and_cost_schedule_create_warnings(golden_cases) -> None:
     case = golden_cases["2026000358"]
     draft = case.expected.model_copy(deep=True)

@@ -174,6 +174,17 @@ INTEREST_SETTLEMENT = re.compile(
     re.DOTALL,
 )
 EXPLICIT_INCLUDED = re.compile(r"공급가에는?.{0,100}?발코니.{0,100}?포함", re.DOTALL)
+NON_BALCONY_PAID_OPTION = re.compile(
+    r"(?P<raw>(?:"
+    r"추가\s*선택\s*품목(?:\s*\([^)]*유상\s*옵션[^)]*\))?"
+    r"|유상\s*옵션"
+    r"|플러스\s*옵션"
+    r"|시스템\s*에어컨.{0,50}?(?:유상|옵션|공급금액)"
+    r"|(?:유상|옵션|공급금액).{0,50}?시스템\s*에어컨"
+    r"|주방\s*가전(?:제품)?.{0,50}?(?:유상|옵션|공급금액)"
+    r"))",
+    re.DOTALL,
+)
 ARRANGEMENT_PLANNED = re.compile(
     r"(?P<raw>(?:"
     r"(?:중도금.{0,40}?)?(?:대출|융자)(?:을|를)?\s*알선.{0,80}?(?:예정|가능|할\s*수)"
@@ -190,7 +201,10 @@ MEDIATION_NOT_GUARANTEED = re.compile(
     re.DOTALL,
 )
 INDIVIDUAL_REVIEW = re.compile(
-    r"(?P<raw>(?:개인|계약자).{0,120}?(?:신용|자격|사정|심사).{0,100}?(?:한도.{0,30}?상이|대출.{0,20}?불가|심사))",
+    r"(?P<raw>(?:(?:각\s*)?개인(?:의|\s*별)?|계약자(?:의|\s*별|\s*본인)?|본인(?:의)?)"
+    r".{0,180}?(?:보증(?:서\s*발급)?\s*제한|신용불량|대출\s*(?:한도|여부|실행|적격)|"
+    r"금융기관(?:의)?\s*심사|자격\s*가능\s*여부)"
+    r".{0,140}?(?:한도.{0,30}?상이|상이|축소|제한|대출.{0,30}?불가|불가|부족|결정|심사))",
     re.DOTALL,
 )
 TERMS_BY_TYPE = re.compile(
@@ -200,8 +214,11 @@ TERMS_BY_TYPE = re.compile(
     r"[^.\n]{0,60}?(?:상이|다름)))",
 )
 INDIVIDUAL_REVIEW_FINAL = re.compile(
-    r"(?P<raw>대출\s*가능\s*여부는\s*확정\s*사항이\s*아니며"
-    r".{0,160}?대출취급기관의\s*심사를\s*거쳐\s*최종\s*결정)",
+    r"(?P<raw>(?:(?:대출\s*(?:가능\s*)?여부)"
+    r".{0,180}?(?:금융기관|대출취급기관)(?:의)?\s*심사"
+    r".{0,100}?(?:최종\s*)?결정"
+    r"|(?:금융기관|대출취급기관)(?:의)?\s*심사"
+    r".{0,100}?대출\s*(?:가능\s*)?여부.{0,60}?결정))",
     re.DOTALL,
 )
 SETTLEMENT_REPAY_OR_CONVERT = re.compile(
@@ -1108,7 +1125,7 @@ def _ground_risk_clauses(
 
     unavailable = _find(pages, NOT_AVAILABLE)
     mediation = _find(pages, MEDIATION_NOT_GUARANTEED)
-    individual = _find(pages, INDIVIDUAL_REVIEW) or _find(pages, INDIVIDUAL_REVIEW_FINAL)
+    individual = _find(pages, INDIVIDUAL_REVIEW_FINAL) or _find(pages, INDIVIDUAL_REVIEW)
     terms_by_type = _find(pages, TERMS_BY_TYPE)
     interest_burden = _find(pages, INTEREST_BORROWER_BURDEN) or _find(
         pages, INTEREST_SETTLEMENT
@@ -1236,10 +1253,20 @@ def _ground_exception_flags(
             Evidence(field="/exception_flags", page=page_number, raw_text=match.group("raw"))
         )
 
-    individual_review = _find(pages, INDIVIDUAL_REVIEW)
+    individual_review = _find(pages, INDIVIDUAL_REVIEW_FINAL) or _find(
+        pages, INDIVIDUAL_REVIEW
+    )
     if individual_review:
         flags.append(ExceptionFlag.INDIVIDUAL_REVIEW_NOTED)
         page_number, match = individual_review
+        evidence.append(
+            Evidence(field="/exception_flags", page=page_number, raw_text=match.group("raw"))
+        )
+
+    additional_cost_scope = _find(pages, NON_BALCONY_PAID_OPTION)
+    if additional_cost_scope:
+        flags.append(ExceptionFlag.ADDITIONAL_COST_SCOPE_LIMITED)
+        page_number, match = additional_cost_scope
         evidence.append(
             Evidence(field="/exception_flags", page=page_number, raw_text=match.group("raw"))
         )
@@ -1252,6 +1279,8 @@ def _cost_row(
     pages: list[CandidatePage],
     unit_name: str,
     cost_type: str,
+    *,
+    require_cost_category: bool = True,
 ) -> tuple[int, str] | None:
     terms = {
         "BALCONY_EXTENSION": ("발코니 확장", "발코니확장"),
@@ -1259,7 +1288,7 @@ def _cost_row(
     }.get(cost_type, ())
     all_headings = ("발코니 확장", "발코니확장", "시스템 에어컨", "시스템에어컨")
     for page in sorted(pages, key=lambda item: item.number):
-        if "cost" not in page.categories:
+        if require_cost_category and "cost" not in page.categories:
             continue
         if terms and not any(term in page.text for term in terms):
             continue
@@ -1282,33 +1311,43 @@ def _cost_payment_template(
     *,
     page_number: int,
     raw_row: str,
-) -> list[tuple[PaymentStage, date | None, str | None]]:
+) -> tuple[list[tuple[PaymentStage, date | None, str | None]], str | None]:
     page = next((item for item in pages if item.number == page_number), None)
     if page is None:
-        return []
+        return [], None
     lines = page.text.splitlines()
     row_index = next(
         (index for index, line in enumerate(lines) if _normalized(raw_row) in _normalized(line)),
         None,
     )
     if row_index is None:
-        return []
+        return [], None
     start = max(0, row_index - 20)
     candidates = [
-        (index, re.findall(r"계약금|중도금|잔금", lines[index]))
+        (index, re.findall(r"계약금|계약\s*시|중도금|잔금", lines[index]))
         for index in range(start, row_index)
     ]
     candidates = [(index, labels) for index, labels in candidates if len(labels) >= 2]
     if not candidates:
-        return []
+        return [], None
     header_index, labels = candidates[-1]
     context = " ".join(lines[header_index:row_index])
+    raw_header = "\n".join(lines[header_index:row_index]).strip()
+    header_evidence = raw_header[-1000:]
     dates = list(DATE_TEXT.finditer(context))
     date_index = 0
+    contract_due = re.search(r"계약\s*(?:체결\s*)?시", context)
+    balance_due = re.search(r"입주\s*지정일|입주일|입주\s*시", context)
     result: list[tuple[PaymentStage, date | None, str | None]] = []
     for label in labels:
-        if label == "계약금":
-            result.append((PaymentStage.CONTRACT, None, "계약 시"))
+        if label == "계약금" or label.replace(" ", "") == "계약시":
+            result.append(
+                (
+                    PaymentStage.CONTRACT,
+                    None,
+                    contract_due.group(0) if contract_due else None,
+                )
+            )
         elif label == "중도금":
             due_date = None
             if date_index < len(dates):
@@ -1317,8 +1356,60 @@ def _cost_payment_template(
                 date_index += 1
             result.append((PaymentStage.INTERIM, due_date, None))
         else:
-            result.append((PaymentStage.BALANCE, None, "입주지정일"))
-    return result
+            result.append(
+                (
+                    PaymentStage.BALANCE,
+                    None,
+                    balance_due.group(0) if balance_due else None,
+                )
+            )
+    return result, header_evidence or None
+
+
+def _review_cost_row_from_evidence(
+    draft: ExtractionDraft,
+    pages: list[CandidatePage],
+    *,
+    cost_index: int,
+    unit_name: str,
+) -> tuple[int, str] | None:
+    """Return an exact, amount-matching row already selected by the reviewer.
+
+    A full announcement can mention the same unit name in the apartment-price,
+    balcony, and option tables.  Review re-grounding must therefore never pick
+    the first matching row from the whole PDF.  The editable draft's exact
+    additional-cost row is the reviewer's anchor; we accept it only when the
+    quote still exists on the locked page and its won amounts exactly match the
+    retained total and installment amounts.
+    """
+
+    cost = draft.additional_costs[cost_index]
+    if cost.total_amount_manwon is None or any(
+        payment.amount_manwon is None for payment in cost.payments
+    ):
+        return None
+    expected_amounts = [
+        cost.total_amount_manwon * 10_000,
+        *(payment.amount_manwon * 10_000 for payment in cost.payments),
+    ]
+    page_map = {page.number: page for page in pages}
+    evidence_field = f"/additional_costs/{cost_index}"
+    normalized_unit = _normalized(unit_name)
+    for item in draft.evidence:
+        if item.field != evidence_field:
+            continue
+        page = page_map.get(item.page)
+        if page is None:
+            continue
+        normalized_quote = _normalized(item.raw_text)
+        if normalized_quote not in _normalized(page.text):
+            continue
+        if normalized_unit not in normalized_quote:
+            continue
+        if _won_values(item.raw_text) != expected_amounts:
+            continue
+        return item.page, item.raw_text
+    return None
 
 
 def _ground_costs(
@@ -1438,7 +1529,7 @@ def _ground_costs(
             if len(row_amounts) >= 2:
                 cost.total_amount_manwon = _exact_manwon(row_amounts[0])
                 payment_amounts = row_amounts[1:]
-                template = _cost_payment_template(
+                template, header_evidence = _cost_payment_template(
                     pages,
                     page_number=page_number,
                     raw_row=raw_text,
@@ -1472,6 +1563,15 @@ def _ground_costs(
                     # proven total and surface an explicit schedule HOLD instead
                     # of retaining contradictory model installments.
                     cost.payments = []
+                if header_evidence is not None:
+                    _append_evidence(
+                        evidence,
+                        Evidence(
+                            field=f"/additional_costs/{index}/payments",
+                            page=page_number,
+                            raw_text=header_evidence,
+                        ),
+                    )
             _append_evidence(
                 evidence,
                 Evidence(
@@ -1479,6 +1579,67 @@ def _ground_costs(
                     page=page_number,
                     raw_text=raw_text,
                 ),
+            )
+    return evidence
+
+
+def _reground_review_cost_schedule(
+    draft: ExtractionDraft,
+    pages: list[CandidatePage],
+    *,
+    unit_type_name: str | None,
+) -> list[Evidence]:
+    """Rebuild only source-derived payment timing for human-edited cost rows.
+
+    Review drafts may correct amount, applicability, and optional/required semantics.
+    Those judgments stay untouched. Header-derived dates and labels are deterministic,
+    so they are refreshed here together with explicit header evidence.
+    """
+
+    evidence: list[Evidence] = []
+    unit = unit_type_name.split()[0] if unit_type_name else None
+    if unit is None:
+        return evidence
+    for index, cost in enumerate(draft.additional_costs):
+        row = _review_cost_row_from_evidence(
+            draft,
+            pages,
+            cost_index=index,
+            unit_name=unit,
+        )
+        if row is None:
+            continue
+        page_number, raw_row = row
+        template, header_evidence = _cost_payment_template(
+            pages,
+            page_number=page_number,
+            raw_row=raw_row,
+        )
+        if len(template) != len(cost.payments):
+            continue
+        if any(
+            payment.stage != stage
+            for payment, (stage, _due_date, _due_text) in zip(
+                cost.payments,
+                template,
+                strict=True,
+            )
+        ):
+            continue
+        for payment, (_stage, due_date, due_text) in zip(
+            cost.payments,
+            template,
+            strict=True,
+        ):
+            payment.due_date = due_date
+            payment.due_text = due_text
+        if header_evidence is not None:
+            evidence.append(
+                Evidence(
+                    field=f"/additional_costs/{index}/payments",
+                    page=page_number,
+                    raw_text=header_evidence,
+                )
             )
     return evidence
 
@@ -1542,10 +1703,18 @@ _REVIEW_REGROUNDED_EVIDENCE_PATHS = {
 }
 
 
+def _is_review_regrounded_evidence(field: str) -> bool:
+    return field in _REVIEW_REGROUNDED_EVIDENCE_PATHS or re.fullmatch(
+        r"/additional_costs/\d+/payments",
+        field,
+    ) is not None
+
+
 def reground_review_metadata(
     draft: ExtractionDraft,
     *,
     pages: list[CandidatePage],
+    unit_type_name: str | None = None,
 ) -> ExtractionDraft:
     """Rebuild deterministic review metadata from the exact source PDF.
 
@@ -1559,11 +1728,17 @@ def reground_review_metadata(
     evidence = [
         item
         for item in grounded.evidence
-        if item.field not in _REVIEW_REGROUNDED_EVIDENCE_PATHS
+        if not _is_review_regrounded_evidence(item.field)
     ]
     for item in _ground_settlement(grounded, pages):
         _append_evidence(evidence, item)
     for item in _ground_exception_flags(grounded, pages):
+        _append_evidence(evidence, item)
+    for item in _reground_review_cost_schedule(
+        grounded,
+        pages,
+        unit_type_name=unit_type_name,
+    ):
         _append_evidence(evidence, item)
     _ground_risk_clauses(grounded, pages, evidence)
     grounded.evidence = evidence

@@ -221,6 +221,18 @@ def _path_has_evidence(path: str, evidence_fields: set[str]) -> bool:
     if path in evidence_fields:
         return True
 
+    cost_payment = re.fullmatch(
+        r"(?P<cost>/additional_costs/\d+)/payments/\d+/(?P<field>[^/]+)",
+        path,
+    )
+    if cost_payment is not None:
+        # The amount comes from the selected table row, while stage/date/text
+        # come from its column header.  A numeric row must not silently prove a
+        # due date that appears only above it.
+        if cost_payment.group("field") == "amount_manwon":
+            return cost_payment.group("cost") in evidence_fields
+        return f"{cost_payment.group('cost')}/payments" in evidence_fields
+
     # A table row can legitimately support all fields in one payment component
     # or one additional-cost item.  Other parents (notably /interim_loan) are
     # intentionally *not* accepted: a quote about the loan ratio must not also

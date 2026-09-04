@@ -83,6 +83,7 @@
       {"field": "/interim_loan/interest_type", "page": 37, "raw_text": "대출 조건은 중도금 이자후불제로"},
       {"field": "/interim_loan/interest_note", "page": 38, "raw_text": "중도금 대출 이자는 입주지정기간 최초일 전일까지 시행위탁자가 대납하되"},
       {"field": "/interim_loan/prepay_requirement_ratio", "page": 8, "raw_text": "분양대금의 총 10% 완납 후"},
+      {"field": "/additional_costs/0/payments", "page": 38, "raw_text": "계약금(10%)                      중도금(10%)                               잔금(80%)\n     약식표기 (타입)           공급금액                                                                                                     비고\n                                           계약 시                        2027.02.05.                           입주지정일"},
       {"field": "/additional_costs/0", "page": 38, "raw_text": "39A              15,000,000       1,500,000                    1,500,000                              12,000,000"}
     ],
     "exception_flags": ["LOAN_MEDIATION_NOT_GUARANTEED", "SELF_FUNDING_REQUIRED"]

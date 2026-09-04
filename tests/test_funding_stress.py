@@ -99,6 +99,30 @@ def _request(case, *, cash: int, routes=None, grid=None, monthly_saving=100):
 
 
 @pytest.mark.asyncio
+async def test_non_integral_manwon_ratio_abstains_instead_of_rounding(golden_cases) -> None:
+    analysis = await _reviewed_result(golden_cases["2026000358"])
+    analysis.payment_schedule.down_payment.total_amount_manwon = None
+    analysis.payment_schedule.down_payment.total_ratio = 0.05
+
+    obligations, holds = funding_stress_module._obligations(analysis, 57_370)
+
+    assert obligations.contract is None
+    assert any(
+        hold.code == StressHoldCode.PAYMENT_VALUE_UNKNOWN and hold.blocking
+        for hold in holds
+    )
+
+    analysis.payment_schedule.down_payment.total_amount_manwon = 2_869
+    obligations, holds = funding_stress_module._obligations(analysis, 57_370)
+
+    assert obligations.contract is None
+    assert any(
+        hold.code == StressHoldCode.PAYMENT_VALUE_UNKNOWN and hold.blocking
+        for hold in holds
+    )
+
+
+@pytest.mark.asyncio
 async def test_0372_threshold_and_actual_ratio_change_funding_stage(golden_cases) -> None:
     case = golden_cases["2026000372"]
     analysis = await _reviewed_result(case)
@@ -116,6 +140,9 @@ async def test_0372_threshold_and_actual_ratio_change_funding_stage(golden_cases
     )
 
     assert response.advisory is True
+    assert response.calculator_version == "0.1.2"
+    assert all("ROUND_HALF_UP" not in item for item in response.assumptions)
+    assert any("보수적으로 내림" in item for item in response.assumptions)
     assert response.maximum_interim_ratio_bps == 6_000
     assert response.interim_continuity_threshold.status == ThresholdStatus.CALCULATED
     assert response.interim_continuity_threshold.minimum_ratio_bps == 6_000
@@ -214,7 +241,7 @@ async def test_fixed_amount_interim_never_overfinances_rounding(golden_cases) ->
 
     response = calculate_funding_stress(request, analysis)
 
-    assert response.maximum_interim_ratio_bps == 209
+    assert response.maximum_interim_ratio_bps == 208
     assert response.document_cap_comparison.document_cap_ratio_bps == 0
     assert response.interim_continuity_threshold.minimum_ratio_bps == 0
     max_ratio_case = next(
@@ -222,7 +249,8 @@ async def test_fixed_amount_interim_never_overfinances_rounding(golden_cases) ->
         for item in response.route_cases[0].scenarios
         if item.interim_ratio_bps == response.maximum_interim_ratio_bps
     )
-    assert max_ratio_case.interim_loan_amount_manwon == 1_000
+    assert max_ratio_case.interim_loan_amount_manwon == 996
+    assert max_ratio_case.interim_loan_amount_manwon <= 1_000
 
 
 @pytest.mark.asyncio
@@ -384,5 +412,27 @@ async def test_ratio_grid_cannot_exceed_interim_obligation(golden_cases) -> None
         calculate_funding_stress(_request(case, cash=30_000, grid=[6_001]), analysis)
 
 
-def test_bps_amount_uses_half_up() -> None:
-    assert _bps_amount(1_000, 5) == 1
+def test_bps_amount_rounds_available_funding_down() -> None:
+    assert _bps_amount(1_000, 5) == 0
+
+
+def test_amount_bps_round_trip_never_exceeds_source_cap() -> None:
+    for amount, price in ((2, 30_000), (1, 15_000), (12_345, 57_370)):
+        ratio_bps = funding_stress_module._amount_bps(amount, price)
+        assert _bps_amount(ratio_bps, price) <= amount
+
+
+@pytest.mark.asyncio
+async def test_ratio_caps_round_down_instead_of_expanding(golden_cases) -> None:
+    analysis = await _reviewed_result(golden_cases["2026000358"])
+    analysis.payment_schedule.interim_payment.total_ratio = 0.60005
+    analysis.interim_loan.arranged_ratio = 0.40005
+
+    assert funding_stress_module._maximum_interim_bps(analysis, 30_000) == 6_000
+    assert funding_stress_module._document_cap_bps(analysis, 30_000) == 4_000
+
+    analysis.interim_loan.arranged_ratio = None
+    analysis.interim_loan.arranged_amount_manwon = 2
+    cap_bps = funding_stress_module._document_cap_bps(analysis, 30_000)
+    assert cap_bps == 0
+    assert _bps_amount(cap_bps, 30_000) <= 2

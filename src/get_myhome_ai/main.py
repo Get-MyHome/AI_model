@@ -25,6 +25,7 @@ from get_myhome_ai.review_batch import (
     prepare_review_batch,
     validate_review_batch_approval,
 )
+from get_myhome_ai.review_candidate_correction import prepare_audited_review_candidates
 from get_myhome_ai.settings import Settings
 
 
@@ -84,6 +85,13 @@ def _parser() -> argparse.ArgumentParser:
     )
     prepare_batch.add_argument("--reference-dir", type=Path)
     prepare_batch.add_argument("--output-dir", type=Path, required=True)
+
+    correction_candidates = commands.add_parser(
+        "prepare-audited-review-candidates",
+        help="감사된 49건의 fail-closed 교정 후보를 PENDING으로 준비합니다.",
+    )
+    correction_candidates.add_argument("--draft-manifest", type=Path, required=True)
+    correction_candidates.add_argument("--output-dir", type=Path, required=True)
 
     captured_inventory = commands.add_parser(
         "build-captured-inventory",
@@ -250,6 +258,20 @@ def run() -> None:
             f"drafts={manifest.summary.draft_count} "
             f"version_compatible={manifest.summary.approval_eligible_draft_count} "
             f"unavailable={manifest.summary.unavailable_target_count}"
+        )
+        return
+    if args.command == "prepare-audited-review-candidates":
+        payload = prepare_audited_review_candidates(
+            draft_manifest_path=args.draft_manifest,
+            output_dir=args.output_dir,
+            settings=settings,
+        )
+        print(args.output_dir / "review-draft-manifest.json")
+        print(args.output_dir / "review-approval-manifest.template.json")
+        print(args.output_dir / "review-candidate-correction-manifest.json")
+        print(
+            f"workspace_drafts={payload['workspace_draft_count']} "
+            f"corrected_candidates={payload['candidate_count']} approval_state=PENDING"
         )
         return
     if args.command == "build-captured-inventory":

@@ -164,7 +164,11 @@ def _revalidate_result(
         )
         for page in pages
     ]
-    grounded = reground_review_metadata(source_draft, pages=source_pages)
+    grounded = reground_review_metadata(
+        source_draft,
+        pages=source_pages,
+        unit_type_name=result.target_unit.unit_type_name,
+    )
     normalized, derived_fields = normalize_draft(grounded)
     validation = validate_draft(
         normalized,
@@ -290,6 +294,7 @@ def write_review_sheet(
             "- [ ] 아래 추출값을 선택 주택형·동·층과 대조했다.",
             "- [ ] 각 근거 문장이 표시된 물리 PDF 페이지에 존재한다.",
             "- [ ] 선택비용과 분양가 포함비용을 기본 필요자금에 더하지 않았다.",
+            "- [ ] 기타 유상옵션이 있으면 전체 카탈로그 미포함 범위 안내가 표시됐다.",
             "- [ ] HOLD 질문과 다음 행동이 실제 불확실성과 맞는다.",
             "",
             "## 고정 요약",

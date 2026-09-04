@@ -87,3 +87,38 @@ def test_individual_review_hold_is_non_blocking(golden_cases) -> None:
     )
     assert personal.kind == "PERSONAL_REVIEW"
     assert personal.blocking is False
+
+
+def test_limited_optional_cost_scope_is_non_blocking_and_does_not_lower_status(
+    golden_cases,
+) -> None:
+    case = golden_cases["2026000358"]
+    draft, derived = normalize_draft(case.expected)
+    draft.exception_flags = [ExceptionFlag.ADDITIONAL_COST_SCOPE_LIMITED]
+    report = validate_draft(
+        draft,
+        pages=synthetic_pages(case),
+        derived_fields=derived,
+        sale_price_manwon=case.sale_price_manwon,
+    )
+
+    baseline_draft = draft.model_copy(deep=True)
+    baseline_draft.exception_flags = []
+    baseline_holds = derive_holds(
+        baseline_draft,
+        report,
+        unit_type_name=case.unit_type_name,
+    )
+    holds = derive_holds(draft, report, unit_type_name=case.unit_type_name)
+    scope = next(
+        hold
+        for hold in holds
+        if hold.reason_code == HoldReasonCode.ADDITIONAL_COST_SCOPE_LIMITED
+    )
+
+    assert scope.kind == "DOCUMENT_UNCERTAINTY"
+    assert scope.blocking is False
+    assert derive_analysis_status(report, holds) == derive_analysis_status(
+        report,
+        baseline_holds,
+    )

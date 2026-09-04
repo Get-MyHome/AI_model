@@ -21,6 +21,7 @@ HOLD 문구는 모델이 자유 생성하지 않습니다. 아래 코드에 고�
 | `TERMS_DIFFER_BY_HOUSING_TYPE` | 주택형에 따라 조건이 달라요. | 선택한 주택형에 같은 대출·납부 조건이 적용되는지 확인하세요. |
 | `UNIT_SELECTION_REQUIRED` | 주택형이나 층에 따라 금액이 달라요. | 선택 주택형과 분양가를 지정한 뒤 다시 계산하세요. |
 | `ADDITIONAL_COST_UNKNOWN` | 추가비용의 금액 또는 납부 시점이 불명확해요. | 선택품목 계약서에서 총액과 회차를 확인하세요. |
+| `ADDITIONAL_COST_SCOPE_LIMITED` | 공고문에 선택 유상옵션 안내가 있으며, 이번 분석은 전체 선택품목 목록을 보장하지 않아요. | 선택할 시스템에어컨·가전·가구 옵션이 있으면 해당 금액과 납부일정을 추가해 다시 계산하세요. |
 | `TABLE_REVIEW_REQUIRED` | 표 구조를 자동으로 확정하기 어려워요. | 표시된 공고문 페이지를 사람이 대조하세요. |
 | `SOURCE_CONFLICT` | 공고문 안의 조건이 서로 달라요. | 정정공고와 최신 안내문 중 적용 문서를 확인하세요. |
 | `EVIDENCE_MISSING` | 추출값의 원문 근거를 확인하지 못했어요. | 표시된 필드를 사람이 원문과 대조하세요. |
@@ -34,6 +35,11 @@ HOLD 문구는 모델이 자유 생성하지 않습니다. 아래 코드에 고�
 문서 추출 실패가 아니라 실제 승인은 개인 심사가 필요하다는 안내이므로, 이 코드만
 있을 때 `analysis_status=READY`일 수 있습니다. backend는 문서 불확실성과 개인 심사
 조건을 별도로 표시해야 합니다.
+
+`ADDITIONAL_COST_SCOPE_LIMITED`는 선택하지 않은 유상옵션 카탈로그가
+응답에서 완전히 나열되지 않았음을 밝히는 `blocking=false` 범위 안내입니다.
+응답에 포함된 `required=false` 비용과 별개이며, 이 안내만으로
+`analysis_status`를 `PARTIAL`/​`HOLD`로 낮추지 않습니다.
 
 `GUARANTEE_PROVIDER_UNKNOWN`, `BALANCE_CONVERSION_UNCERTAIN`,
 `TERMS_DIFFER_BY_HOUSING_TYPE`은 후속 은행 안내문·주택형별 조건 연동을 위한 예약

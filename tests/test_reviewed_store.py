@@ -100,7 +100,7 @@ async def test_review_from_old_extractor_is_never_selected(tmp_path: Path, golde
     case = golden_cases["2026000358"]
     automatic = await _automatic_result(tmp_path, case)
     reviewed = _reviewed_copy(automatic)
-    reviewed.meta.extractor_version = "0.1.0"
+    reviewed.meta.extractor_version = "0.2.0"
     save_result(reviewed, tmp_path / "old-extractor.json")
     request = AnalyzeRequest(
         complex_id=case.complex_id,
@@ -115,7 +115,7 @@ async def test_review_from_old_extractor_is_never_selected(tmp_path: Path, golde
         source_sha256=automatic.meta.source_sha256,
         reviewed_artifact_dir=tmp_path,
         schema_version="v0.3",
-        extractor_version="0.2.0",
+        extractor_version=Settings().extractor_version,
     )
 
     assert actual is None

@@ -6,11 +6,15 @@ from get_myhome_ai.models import (
     AdditionalCostPayment,
     AdditionalCostType,
     Evidence,
+    ExceptionFlag,
     InterestType,
     LoanArrangementStatus,
     PaymentStage,
 )
-from get_myhome_ai.providers.ollama_grounding import ground_ollama_draft
+from get_myhome_ai.providers.ollama_grounding import (
+    ground_ollama_draft,
+    reground_review_metadata,
+)
 
 
 def _page(number: int, text: str, *categories: str) -> CandidatePage:
@@ -78,6 +82,340 @@ def test_balcony_inclusion_never_propagates_to_system_aircon(golden_cases) -> No
     assert balcony.payments == []
     assert aircon.included_in_sale_price is None
     assert aircon.required is None
+
+
+def test_paid_option_section_adds_non_blocking_scope_flag(golden_cases) -> None:
+    draft = golden_cases["2026000358"].expected.model_copy(deep=True)
+    pages = [
+        _page(
+            40,
+            "추가선택품목 (유상옵션)\n시스템 에어컨\n39A 2,000,000 200,000 1,800,000",
+            "cost",
+        )
+    ]
+
+    actual = ground_ollama_draft(
+        draft,
+        pages=pages,
+        unit_type_name="39A",
+        sale_price_manwon=103_500,
+    )
+
+    assert ExceptionFlag.ADDITIONAL_COST_SCOPE_LIMITED in actual.exception_flags
+    assert any(
+        item.field == "/exception_flags" and item.page == 40
+        for item in actual.evidence
+    )
+
+
+def test_balcony_only_section_does_not_add_limited_scope_flag(golden_cases) -> None:
+    draft = golden_cases["2026000358"].expected.model_copy(deep=True)
+
+    actual = ground_ollama_draft(
+        draft,
+        pages=[_page(38, "발코니 확장 공사비\n39A 15,000,000", "cost")],
+        unit_type_name="39A",
+        sale_price_manwon=103_500,
+    )
+
+    assert ExceptionFlag.ADDITIONAL_COST_SCOPE_LIMITED not in actual.exception_flags
+
+
+def test_incidental_system_aircon_text_does_not_add_limited_scope_flag(
+    golden_cases,
+) -> None:
+    draft = golden_cases["2026000358"].expected.model_copy(deep=True)
+
+    actual = ground_ollama_draft(
+        draft,
+        pages=[_page(38, "시스템에어컨 배관이 노출될 수 있습니다.", "cost")],
+        unit_type_name="39A",
+        sale_price_manwon=103_500,
+    )
+
+    assert ExceptionFlag.ADDITIONAL_COST_SCOPE_LIMITED not in actual.exception_flags
+
+
+def test_additional_cost_due_text_and_header_evidence_are_source_grounded(
+    golden_cases,
+) -> None:
+    draft = golden_cases["2026000358"].expected.model_copy(deep=True)
+    page = _page(
+        38,
+        "발코니 확장 공사비\n"
+        "주택형 총액 계약금(10%) 중도금1차(10%) 잔금(80%)\n"
+        "계약시 2027.02.19 입주일\n"
+        "39A 30,000,000 3,000,000 3,000,000 24,000,000",
+    )
+    draft.additional_costs[0].total_amount_manwon = 3_000
+    draft.additional_costs[0].payments[0].amount_manwon = 300
+    draft.additional_costs[0].payments[1].amount_manwon = 300
+    draft.additional_costs[0].payments[-1].amount_manwon = 2_400
+    draft.evidence.append(
+        Evidence(
+            field="/additional_costs/0",
+            page=38,
+            raw_text="39A 30,000,000 3,000,000 3,000,000 24,000,000",
+        )
+    )
+
+    actual = reground_review_metadata(
+        draft,
+        pages=[page],
+        unit_type_name="39A",
+    )
+
+    assert actual.additional_costs[0].payments[-1].due_text == "입주일"
+    assert any(
+        item.field == "/additional_costs/0/payments"
+        and item.page == 38
+        and "2027.02.19" in item.raw_text
+        and "입주일" in item.raw_text
+        for item in actual.evidence
+    )
+    assert reground_review_metadata(
+        actual,
+        pages=[page],
+        unit_type_name="39A",
+    ) == actual
+
+
+def test_auto_grounding_records_cost_header_as_payment_evidence(golden_cases) -> None:
+    draft = golden_cases["2026000358"].expected.model_copy(deep=True)
+    draft.evidence = []
+    page = _page(
+        38,
+        "발코니 확장 공사비\n"
+        "주택형 총액 계약금(10%) 중도금1차(10%) 잔금(80%)\n"
+        "계약시 2027.02.19 입주일\n"
+        "39A 30,000,000 3,000,000 3,000,000 24,000,000",
+        "cost",
+    )
+
+    actual = ground_ollama_draft(
+        draft,
+        pages=[page],
+        unit_type_name="39A",
+        sale_price_manwon=103_500,
+    )
+
+    assert any(
+        item.field == "/additional_costs/0/payments"
+        and item.page == 38
+        and "2027.02.19" in item.raw_text
+        and "입주일" in item.raw_text
+        for item in actual.evidence
+    )
+
+
+def test_cost_schedule_does_not_invent_contract_or_balance_due_text(
+    golden_cases,
+) -> None:
+    draft = golden_cases["2026000358"].expected.model_copy(deep=True)
+    draft.evidence.append(
+        Evidence(
+            field="/additional_costs/0",
+            page=38,
+            raw_text="39A 30,000,000 3,000,000 3,000,000 24,000,000",
+        )
+    )
+    draft.additional_costs[0].total_amount_manwon = 3_000
+    draft.additional_costs[0].payments[0].amount_manwon = 300
+    draft.additional_costs[0].payments[1].amount_manwon = 300
+    draft.additional_costs[0].payments[-1].amount_manwon = 2_400
+    page = _page(
+        38,
+        "발코니 확장 공사비\n"
+        "주택형 총액 계약금(10%) 중도금1차(10%) 잔금(80%)\n"
+        "39A 30,000,000 3,000,000 3,000,000 24,000,000",
+    )
+
+    actual = reground_review_metadata(
+        draft,
+        pages=[page],
+        unit_type_name="39A",
+    )
+
+    assert actual.additional_costs[0].payments[0].due_text is None
+    assert actual.additional_costs[0].payments[-1].due_text is None
+
+
+def test_review_cost_stage_mismatch_does_not_receive_header_evidence(
+    golden_cases,
+) -> None:
+    draft = golden_cases["2026000358"].expected.model_copy(deep=True)
+    draft.evidence.append(
+        Evidence(
+            field="/additional_costs/0",
+            page=38,
+            raw_text="39A 30,000,000 3,000,000 3,000,000 24,000,000",
+        )
+    )
+    draft.additional_costs[0].total_amount_manwon = 3_000
+    draft.additional_costs[0].payments[0].amount_manwon = 300
+    draft.additional_costs[0].payments[1].amount_manwon = 300
+    draft.additional_costs[0].payments[-1].amount_manwon = 2_400
+    draft.additional_costs[0].payments[1].stage = PaymentStage.BALANCE
+    page = _page(
+        38,
+        "발코니 확장 공사비\n"
+        "주택형 총액 계약금(10%) 중도금1차(10%) 잔금(80%)\n"
+        "계약시 2027.02.19 입주일\n"
+        "39A 30,000,000 3,000,000 3,000,000 24,000,000",
+    )
+
+    actual = reground_review_metadata(
+        draft,
+        pages=[page],
+        unit_type_name="39A",
+    )
+
+    assert not any(
+        item.field == "/additional_costs/0/payments" for item in actual.evidence
+    )
+
+
+def test_review_cost_schedule_uses_exact_evidence_row_not_first_pdf_match(
+    golden_cases,
+) -> None:
+    draft = golden_cases["2026000358"].expected.model_copy(deep=True)
+    draft.evidence.append(
+        Evidence(
+            field="/additional_costs/0",
+            page=42,
+            raw_text="39A 30,000,000 3,000,000 6,000,000 21,000,000",
+        )
+    )
+    draft.additional_costs[0].total_amount_manwon = 3_000
+    draft.additional_costs[0].payments[0].amount_manwon = 300
+    draft.additional_costs[0].payments[1].amount_manwon = 600
+    draft.additional_costs[0].payments[-1].amount_manwon = 2_100
+    pages = [
+        _page(
+            8,
+            "발코니 확장\n주택형 공급금액 계약금 중도금 잔금\n"
+            "39A 1,035,000,000 103,500,000 621,000,000 310,500,000",
+        ),
+        _page(
+            42,
+            "발코니 확장 공사비\n"
+            "약식표기 공급금액 계약시(10%) 중도금(20%) 잔금(70%)\n"
+            "계약시 2028.09.20 입주지정일\n"
+            "39A 30,000,000 3,000,000 6,000,000 21,000,000",
+        ),
+    ]
+
+    actual = reground_review_metadata(
+        draft,
+        pages=pages,
+        unit_type_name="39A",
+    )
+
+    assert actual.additional_costs[0].payments[1].due_date.isoformat() == "2028-09-20"
+    assert actual.additional_costs[0].payments[-1].due_text == "입주지정일"
+    assert any(
+        item.field == "/additional_costs/0/payments" and item.page == 42
+        for item in actual.evidence
+    )
+
+
+def test_review_cost_schedule_does_not_reanchor_without_exact_amount_evidence(
+    golden_cases,
+) -> None:
+    draft = golden_cases["2026000358"].expected.model_copy(deep=True)
+    original_due_text = draft.additional_costs[0].payments[-1].due_text
+    page = _page(
+        42,
+        "발코니 확장 공사비\n"
+        "약식표기 공급금액 계약금(10%) 중도금(20%) 잔금(70%)\n"
+        "계약시 2028.09.20 입주일\n"
+        "39A 31,000,000 3,100,000 6,200,000 21,700,000",
+    )
+
+    actual = reground_review_metadata(
+        draft,
+        pages=[page],
+        unit_type_name="39A",
+    )
+
+    assert actual.additional_costs[0].payments[-1].due_text == original_due_text
+    assert not any(
+        item.field == "/additional_costs/0/payments" for item in actual.evidence
+    )
+
+
+def test_individual_review_uses_person_specific_evidence(golden_cases) -> None:
+    draft = golden_cases["2026000358"].expected.model_copy(deep=True)
+    grounded = reground_review_metadata(
+        draft,
+        pages=[
+            _page(
+                8,
+                "계약자의 부담으로 납부합니다. 사업주체 및 시공사의 사정으로 "
+                "대출 알선 불가",
+                "loan",
+            ),
+            _page(
+                41,
+                "본인의 사유(보증제한, 신용불량 등)로 인하여 대출이 불가한 계약자는 "
+                "납부일정에 맞추어 본인이 직접 납부하여야 합니다.",
+                "loan",
+            ),
+        ],
+    )
+
+    clause = next(
+        item for item in grounded.risk_clauses if item.code == "INDIVIDUAL_REVIEW_REQUIRED"
+    )
+    assert clause.evidence[0].page == 41
+    assert "보증제한" in clause.evidence[0].raw_text
+    assert ExceptionFlag.INDIVIDUAL_REVIEW_NOTED in grounded.exception_flags
+
+
+def test_individual_review_covers_real_announcement_wording(golden_cases) -> None:
+    draft = golden_cases["2026000358"].expected.model_copy(deep=True)
+    phrases = [
+        "추후 금융기관 심사를 통하여 대출여부가 결정됩니다.",
+        "개인의 사정 등으로 대출 한도가 개인별로 상이하거나 대출이 불가할 수 있습니다.",
+        "계약자 본인의 개인적인 사정에 의해 제한되고 중도금 대출이 불가하거나 "
+        "대출한도가 부족할 수 있습니다.",
+        "계약자의 대출 적격사유를 고려하여 추후 금융기관 심사를 통하여 결정됩니다.",
+        "개인의 사정 및 자격가능여부 등으로 대출한도가 계약자별로 상이하거나 "
+        "대출이 불가할 수 있습니다.",
+    ]
+
+    for phrase in phrases:
+        grounded = reground_review_metadata(
+            draft,
+            pages=[_page(20, phrase, "loan")],
+        )
+        assert any(
+            item.code == "INDIVIDUAL_REVIEW_REQUIRED"
+            for item in grounded.risk_clauses
+        ), phrase
+
+
+def test_business_party_circumstances_do_not_imply_individual_review(
+    golden_cases,
+) -> None:
+    draft = golden_cases["2026000358"].expected.model_copy(deep=True)
+
+    grounded = reground_review_metadata(
+        draft,
+        pages=[
+            _page(
+                8,
+                "정부정책, 금융기관, 사업주체 및 시공사의 사정으로 "
+                "대출 취급기관과 조건이 변경될 수 있습니다.",
+                "loan",
+            )
+        ],
+    )
+
+    assert not any(
+        item.code == "INDIVIDUAL_REVIEW_REQUIRED"
+        for item in grounded.risk_clauses
+    )
 
 
 def test_verified_bank_is_not_erased_by_loan_split(golden_cases) -> None:
