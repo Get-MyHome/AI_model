@@ -52,15 +52,17 @@
 - Inventory: 167 exact unit/price tuples; 159 are PDF-backed and 8 are HTML-only.
 - Current extractor-`0.2.3` Qwen rerun: 159/159 completed, 0 execution failures.
 - Initial current-run states: 79 AUTO/validation-pass and 80 NEEDS_REVIEW/validation-fail.
-- Final source-audited PENDING union: 154 disjoint tuples = 143 direct corrections + 11 historical
-  audited fact sets rebound into the current envelope.
-- All 154 are schema `v0.3`, extractor `0.2.3`, `AUTO_EXTRACTED`, validation-clean, reviewer-null,
-  source-locked, canonical-equal to fresh exact-PDF revalidation, and idempotent on revalidation.
+- Final source-audited union: 154 disjoint tuples = 143 direct corrections + 11 historical audited
+  fact sets rebound into the current envelope.
+- On 2026-09-04, the user confirmed the exact-PDF review and the 154-item approval manifest was
+  validated and promoted with reviewer `안지홍`. All 154 are schema `v0.3`, extractor `0.2.3`,
+  `REVIEWED`, validation-clean, source-locked, canonical-equal to fresh exact-PDF revalidation,
+  and idempotent on revalidation.
 - The 159-draft workspace covers every PDF-backed tuple. The five tuples outside the audited union
   are all `2026000356` targets; ApplyHome's integer-manwon price truncation does not preserve the
   exact PDF price, so their source identity cannot be approved under the current request contract.
-- Current compatible `REVIEWED` count is 0. Human approval is still required; never call 154
-  “reviewed”.
+- Current compatible `REVIEWED` count is 154. The production service loads this exact allowlist
+  from ignored local runtime storage; unknown or mismatched targets still return automatic output.
 - Of the 154 candidates, 141 have exact integer-manwon core obligations suitable for funding-stress
   after approval. Thirteen must retain `PAYMENT_VALUE_UNKNOWN` due lossless precision limits.
 - Latest internal workspace:
@@ -83,8 +85,8 @@
 
 ## Product claims and boundaries
 
-- Do not claim “27-PDF full-field Qwen accuracy 100%”, “159 tuples reviewed”, or “154 candidates
-  reviewed”.
+- Do not claim “27-PDF full-field Qwen accuracy 100%” or “159 tuples reviewed”. It is accurate to
+  say 154 exact tuples were human-approved, but only within their locked PDF/unit/price identities.
 - Do not call project-arranged ratio a personal approved-loan ratio.
 - Do not multiply `arranged_ratio=0.40` by `interim_ratio=0.60`; both are total-sale-price-relative.
 - Derived uncovered interim amounts mean amounts outside the project-arranged range, never confirmed
@@ -107,8 +109,9 @@
 
 ## Remaining external/human steps
 
-- A real person must visually review and approve desired current candidates item by item. Do not
-  approve the batch template wholesale or record AI/Codex as the reviewer.
+- No additional approval is required for the current 154-item exact allowlist. New PDFs, changed
+  source hashes, unmatched unit/price targets, and the five excluded `2026000356` tuples still need
+  separate human review and must remain automatic/HOLD until then.
 - Backend must call `/api/analyze` once per new current complex/unit target so the official PDF can
   be captured and source-locked; unknown exact targets correctly remain `AUTO_EXTRACTED`.
 - Real bank loan-guide PDF pairs are needed before publicly enabling document-change detection.
@@ -121,6 +124,6 @@
 - Hardened additional-cost scope checks and funding-stress precision/fail-closed behavior.
 - Updated corpus status, review-candidate status, strict-audit, handoff, extraction, HOLD, example,
   and funding-stress documentation.
-- Next step: run full Ruff, compileall, pytest, risk/settlement evaluation, workspace integrity and
-  secret audits; then commit and push. Runtime deployment must wait until at least one real
-  current-version approval exists, otherwise every target remains review-pending.
+- The 154 approved artifacts are deployed under ignored local runtime storage and the service has
+  been restarted with the exact reviewed directory configured. Next step for integration is a
+  backend retry with an exact covered PDF/unit/price request; no backend engine changes are needed.

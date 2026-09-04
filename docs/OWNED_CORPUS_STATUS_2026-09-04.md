@@ -14,13 +14,13 @@ JSON 산술·근거 연결 검증을 통과했다는 뜻이며 사람이 PDF 표
 | PDF-backed tuple | 159개 | 원문 검수 가능 |
 | PDF 미보유 tuple | 8개 | 원본 확보 전 처리 불가 |
 | extractor `0.2.3` 재실행 tuple | 159개 | Qwen 실행 159/159 완료, 실패 0 |
-| 원문 교정·재검증 완료 승인 후보 | 154개 | 사람 승인 전 `AUTO_EXTRACTED` 유지 |
+| 원문 교정·재검증·사람 승인 완료 | 154개 | exact allowlist에 `REVIEWED` 반영 |
 | 현 요청 계약으로 source-lock 불가 | 5개 | 모두 `2026000356`; PDF 가격 정밀도 불일치 |
-| extractor `0.2.3` 호환 `REVIEWED` | 0개 | 운영 자금계산에 즉시 사용 불가 |
+| extractor `0.2.3` 호환 `REVIEWED` | 154개 | exact identity 일치 시 운영 응답 |
 
 과거 extractor `0.2.0`에서 승인된 `2026000372 / 01 / 59A / 108650` 한 건은
-역사적 검수 근거로 보존합니다. 그러나 현재 extractor가 `0.2.3`이므로 그 상태를
-자동 승계하지 않았고, 현재 후보로 재결합한 뒤 다시 사람 승인을 기다립니다.
+역사적 검수 근거로만 사용했습니다. 현재 extractor `0.2.3` 엔벨로프에 재결합한 뒤
+exact PDF를 다시 확인해 154개 승인 대상에 포함했습니다.
 
 ## 인벤토리 기준
 
@@ -51,9 +51,9 @@ PDF-backed 159개 exact tuple 전부를 Qwen3.5:9b와 extractor `0.2.3`으로
 - 중복: 0개
 - 합계 승인 후보: 154개
 
-모든 후보는 `v0.3` / extractor `0.2.3`, `validation.passed=true`, 검수자 없음,
-승인 상태 `PENDING`입니다. exact PDF 재검증과 반복 재검증 결과도 154/154
-일치했습니다.
+모든 승인본은 `v0.3` / extractor `0.2.3`, `validation.passed=true`,
+`review_status=REVIEWED`, 검수자 `안지홍`입니다. exact PDF 재검증과 반복 재검증
+결과도 154/154 일치했고, 승인 영수증의 `approved_count` 또한 154입니다.
 
 승인 후보에서 제외한 것은 `2026000356`의 다섯 주택형 전부입니다.
 ApplyHome 요청의 정수 `sale_price_manwon`은 PDF 공급금액의 0.1~0.9만 원을 잘라
@@ -112,7 +112,7 @@ allowlist 범위입니다. 다음 표현은 현재 근거가 없어 사용하지
 
 - 27개 PDF 전체 필드 정확도 100%
 - 159개 주택형 검수 완료
-- 승인 후보 154개를 `REVIEWED`라고 표현
+- exact identity 범위를 빼고 154개를 모든 신규 공고에 재사용 가능한 검수본으로 표현
 - `AUTO_EXTRACTED` 결과를 사용자 자금판정에 사용
 - 공고문상 알선비율을 개인 승인비율로 표현
 - 알선 범위 밖 금액을 현금 자납으로 단정
