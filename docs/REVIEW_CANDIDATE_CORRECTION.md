@@ -1,11 +1,14 @@
-# 감사된 49건 교정 후보 준비
+# 감사된 143건 교정 후보 준비
 
 `prepare-audited-review-candidates`는 2026-09-04 전수 감사에서 exact PDF
-근거를 확인한 49개 `(complex_id, unit_type_id, unit_type_name,
+근거를 확인한 143개 `(complex_id, unit_type_id, unit_type_name,
 sale_price_manwon)` tuple만 교정하되, 원본 batch의 전체 검수 workspace를
 새 디렉터리에 원자적으로 복제한다.
 
-이 명령은 승인 명령이 아니다.
+이 명령은 승인 명령이 아니다. PDF-backed 159개 중 `2026000356` 다섯 tuple과
+별도 legacy refresh 대상 11개를 제외한 143개만 직접 교정한다. legacy 11개를 현재
+엔벨로프로 재결합하는 절차는 [현재 Extractor 구 검수 후보 refresh](LEGACY_REVIEW_REFRESH.md)를
+따르며, 두 집합의 최종 합계는 154개이고 중복은 없다.
 
 - 출력 `review_status`는 항상 `AUTO_EXTRACTED`이다.
 - 출력 manifest의 `approval_state`는 항상 `PENDING`이다.
@@ -28,7 +31,7 @@ sale_price_manwon)` tuple만 교정하되, 원본 batch의 전체 검수 workspa
    생성하지 않는다.
 7. `review-draft-manifest.json`은 원본과 byte-for-byte로 같고,
    그 manifest의 상대경로에 있는 전체 초안·체크리스트를 복제한다.
-8. 교정된 49건은 같은 상대경로에 덮어쓰고, 승인 template의
+8. 교정된 143건은 같은 상대경로에 덮어쓰고, 승인 template의
    전체 draft SHA-256을 현재 복제본에 맞게 재생성한다. 모든 결정·체크는
    계속 `PENDING`/`false`이며 검수자 정보는 `null`이다.
 
@@ -50,9 +53,9 @@ get-myhome-ai prepare-audited-review-candidates \
 review-candidates-current/
 ├── review-draft-manifest.json                # 원본 batch manifest과 동일
 ├── review-approval-manifest.template.json    # 현재 draft hash, 모두 PENDING
-├── drafts/                                  # 전체 초안; 49건만 교정
+├── drafts/                                  # 전체 초안; 143건만 교정
 ├── checklists/                              # 전체 exact PDF 사람 대조표
-└── review-candidate-correction-manifest.json # 49건 교정 감사 로그
+└── review-candidate-correction-manifest.json # 143건 교정 감사 로그
 ```
 
 검수자는 각 checklist와 exact PDF를 대조하고 출력 template의 해당

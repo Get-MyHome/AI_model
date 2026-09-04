@@ -13,6 +13,7 @@ from get_myhome_ai.models import (
     AnalyzeRequest,
     LoanSettlementRequirement,
     PaymentBasis,
+    PaymentComponent,
     ReviewStatus,
 )
 from get_myhome_ai.pdf_text import DownloadedPdf
@@ -98,6 +99,23 @@ def _request(case, *, cash: int, routes=None, grid=None, monthly_saving=100):
     )
 
 
+def test_explicit_source_amount_accepts_only_tiny_float_ratio_artifact() -> None:
+    component = PaymentComponent(
+        total_ratio=547_270_000 / 586_600_000,
+        total_amount_manwon=54_727,
+        basis=PaymentBasis.MIXED,
+        installments=[],
+        due_date=None,
+        due_month=None,
+        due_text="입주지정일",
+    )
+
+    assert funding_stress_module._component_amount(component, 58_660) == 54_727
+
+    component.total_ratio = 0.90
+    assert funding_stress_module._component_amount(component, 58_660) is None
+
+
 @pytest.mark.asyncio
 async def test_non_integral_manwon_ratio_abstains_instead_of_rounding(golden_cases) -> None:
     analysis = await _reviewed_result(golden_cases["2026000358"])
@@ -108,8 +126,7 @@ async def test_non_integral_manwon_ratio_abstains_instead_of_rounding(golden_cas
 
     assert obligations.contract is None
     assert any(
-        hold.code == StressHoldCode.PAYMENT_VALUE_UNKNOWN and hold.blocking
-        for hold in holds
+        hold.code == StressHoldCode.PAYMENT_VALUE_UNKNOWN and hold.blocking for hold in holds
     )
 
     analysis.payment_schedule.down_payment.total_amount_manwon = 2_869
@@ -117,8 +134,7 @@ async def test_non_integral_manwon_ratio_abstains_instead_of_rounding(golden_cas
 
     assert obligations.contract is None
     assert any(
-        hold.code == StressHoldCode.PAYMENT_VALUE_UNKNOWN and hold.blocking
-        for hold in holds
+        hold.code == StressHoldCode.PAYMENT_VALUE_UNKNOWN and hold.blocking for hold in holds
     )
 
 
@@ -135,9 +151,7 @@ async def test_0372_threshold_and_actual_ratio_change_funding_stage(golden_cases
         LoanSettlementRequirement.REPAY_OR_CONVERT_TO_MORTGAGE
     )
 
-    response = calculate_funding_stress(
-        _request(case, cash=10_865, grid=[4_000, 6_000]), analysis
-    )
+    response = calculate_funding_stress(_request(case, cash=10_865, grid=[4_000, 6_000]), analysis)
 
     assert response.advisory is True
     assert response.calculator_version == "0.1.2"
@@ -149,9 +163,7 @@ async def test_0372_threshold_and_actual_ratio_change_funding_stage(golden_cases
     assert response.document_cap_comparison.interim_continuity.status == MarginStatus.NEGATIVE
     assert response.document_cap_comparison.interim_continuity.margin_bps == -2_000
     schedule_hold = next(
-        hold
-        for hold in response.holds
-        if hold.code == StressHoldCode.SELF_FUNDING_SCHEDULE_UNKNOWN
+        hold for hold in response.holds if hold.code == StressHoldCode.SELF_FUNDING_SCHEDULE_UNKNOWN
     )
     assert "사업주체 알선 대출" in schedule_hold.message
     assert "알선 범위 밖 금액의 조달·납부 일정" in schedule_hold.next_action
@@ -326,8 +338,7 @@ async def test_cost_for_another_unit_type_is_not_added(golden_cases) -> None:
 
     assert response.interim_continuity_threshold.status == ThresholdStatus.CALCULATED
     assert all(
-        hold.code != StressHoldCode.ADDITIONAL_COST_APPLICABILITY_UNKNOWN
-        for hold in response.holds
+        hold.code != StressHoldCode.ADDITIONAL_COST_APPLICABILITY_UNKNOWN for hold in response.holds
     )
 
 

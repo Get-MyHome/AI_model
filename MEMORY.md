@@ -50,21 +50,22 @@
 ## Owned corpus status — 2026-09-04
 
 - Inventory: 167 exact unit/price tuples; 159 are PDF-backed and 8 are HTML-only.
-- Current extractor-`0.2.3` selected Qwen rerun: 62/62 completed, 0 execution failures.
-- Initial current-run states: 53 AUTO/validation-pass and 9 NEEDS_REVIEW/validation-fail.
-- Final source-audited PENDING union: 60 disjoint tuples = 49 direct corrections + 11 historical
+- Current extractor-`0.2.3` Qwen rerun: 159/159 completed, 0 execution failures.
+- Initial current-run states: 79 AUTO/validation-pass and 80 NEEDS_REVIEW/validation-fail.
+- Final source-audited PENDING union: 154 disjoint tuples = 143 direct corrections + 11 historical
   audited fact sets rebound into the current envelope.
-- All 60 are schema `v0.3`, extractor `0.2.3`, `AUTO_EXTRACTED`, validation-clean, reviewer-null,
+- All 154 are schema `v0.3`, extractor `0.2.3`, `AUTO_EXTRACTED`, validation-clean, reviewer-null,
   source-locked, canonical-equal to fresh exact-PDF revalidation, and idempotent on revalidation.
-- The 62-draft workspace has 61 AUTO/pass and 1 NEEDS_REVIEW/fail. The two tuples outside the
-  audited union are `2026000356/04/84A/109378` and `2026000377/03/74/85700`.
-- Current compatible `REVIEWED` count is 0. Human approval is still required; never call 60
+- The 159-draft workspace covers every PDF-backed tuple. The five tuples outside the audited union
+  are all `2026000356` targets; ApplyHome's integer-manwon price truncation does not preserve the
+  exact PDF price, so their source identity cannot be approved under the current request contract.
+- Current compatible `REVIEWED` count is 0. Human approval is still required; never call 154
   “reviewed”.
-- Of the 60 candidates, 50 have exact integer-manwon core obligations suitable for funding-stress
-  after approval. Ten must retain `PAYMENT_VALUE_UNKNOWN` due lossless precision limits.
+- Of the 154 candidates, 141 have exact integer-manwon core obligations suitable for funding-stress
+  after approval. Thirteen must retain `PAYMENT_VALUE_UNKNOWN` due lossless precision limits.
 - Latest internal workspace:
-  `../tmp/owned-corpus-review-v023-final-20260904`. It contains absolute local paths and must not
-  be uploaded as a public artifact.
+  `../tmp/owned-corpus-review-v023-audited154-independent-20260904`. It contains absolute local
+  paths and must not be uploaded as a public artifact.
 - The older `../tmp/owned-corpus-review-work-v4-exact` and
   `../tmp/review-ready-20260904-final` workspaces are extractor-0.2.0 historical inputs, not current
   completion evidence.
@@ -82,7 +83,7 @@
 
 ## Product claims and boundaries
 
-- Do not claim “27-PDF full-field Qwen accuracy 100%”, “159 tuples reviewed”, or “60 candidates
+- Do not claim “27-PDF full-field Qwen accuracy 100%”, “159 tuples reviewed”, or “154 candidates
   reviewed”.
 - Do not call project-arranged ratio a personal approved-loan ratio.
 - Do not multiply `arranged_ratio=0.40` by `interim_ratio=0.60`; both are total-sale-price-relative.

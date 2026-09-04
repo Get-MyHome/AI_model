@@ -319,6 +319,120 @@ def test_review_cost_schedule_uses_exact_evidence_row_not_first_pdf_match(
     )
 
 
+def test_review_cost_schedule_handles_flattened_contract_header_and_unit_alias(
+    golden_cases,
+) -> None:
+    draft = golden_cases["2026000358"].expected.model_copy(deep=True)
+    draft.evidence.append(
+        Evidence(
+            field="/additional_costs/0",
+            page=42,
+            raw_text="46.9070A 11,000,000 1,100,000 9,900,000",
+        )
+    )
+    cost = draft.additional_costs[0]
+    cost.applicable_unit_type = "46A"
+    cost.total_amount_manwon = 1_100
+    cost.payments = [
+        AdditionalCostPayment(
+            number=1,
+            stage=PaymentStage.CONTRACT,
+            amount_manwon=110,
+            due_date=None,
+            due_text="계약시",
+        ),
+        AdditionalCostPayment(
+            number=2,
+            stage=PaymentStage.BALANCE,
+            amount_manwon=990,
+            due_date=None,
+            due_text="입주지정일",
+        ),
+    ]
+    page = _page(
+        42,
+        "발코니 확장 공사비\n"
+        "주택형 총액 계약금(10%) 잔금(90%) 계약시 입주지정일\n"
+        "46.9070A 11,000,000 1,100,000 9,900,000",
+    )
+
+    actual = reground_review_metadata(
+        draft,
+        pages=[page],
+        unit_type_name="46A",
+    )
+
+    assert any(
+        item.field == "/additional_costs/0/payments" and item.page == 42
+        for item in actual.evidence
+    )
+    assert [item.amount_manwon for item in actual.additional_costs[0].payments] == [
+        110,
+        990,
+    ]
+
+    tampered = draft.model_copy(deep=True)
+    tampered.additional_costs[0].total_amount_manwon = 1_101
+    rejected = reground_review_metadata(
+        tampered,
+        pages=[page],
+        unit_type_name="46A",
+    )
+    assert not any(
+        item.field == "/additional_costs/0/payments" for item in rejected.evidence
+    )
+
+
+def test_review_cost_schedule_accepts_exact_grouped_letter_variants(
+    golden_cases,
+) -> None:
+    draft = golden_cases["2026000358"].expected.model_copy(deep=True)
+    draft.evidence.append(
+        Evidence(
+            field="/additional_costs/0",
+            page=40,
+            raw_text="59A, 59B 19,700,000 1,970,000 17,730,000",
+        )
+    )
+    cost = draft.additional_costs[0]
+    cost.applicable_unit_type = "59"
+    cost.total_amount_manwon = 1_970
+    cost.payments = [
+        AdditionalCostPayment(
+            number=1,
+            stage=PaymentStage.CONTRACT,
+            amount_manwon=197,
+            due_date=None,
+            due_text="계약시",
+        ),
+        AdditionalCostPayment(
+            number=2,
+            stage=PaymentStage.BALANCE,
+            amount_manwon=1_773,
+            due_date=None,
+            due_text="입주지정일",
+        ),
+    ]
+    page = _page(
+        40,
+        "발코니 확장 공사비\n"
+        "계약금(10%) 잔금(90%)\n"
+        "약식표기 공급금액 계약시 입주지정일\n"
+        "59A, 59B 19,700,000 1,970,000 17,730,000",
+    )
+
+    actual = reground_review_metadata(
+        draft,
+        pages=[page],
+        unit_type_name="59",
+    )
+
+    assert any(
+        item.field == "/additional_costs/0/payments" and item.page == 40
+        for item in actual.evidence
+    )
+
+
 def test_review_cost_schedule_does_not_reanchor_without_exact_amount_evidence(
     golden_cases,
 ) -> None:

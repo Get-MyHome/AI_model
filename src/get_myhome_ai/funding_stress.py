@@ -83,8 +83,12 @@ def _amount_bps(amount_manwon: int, sale_price_manwon: int) -> int:
 def _component_amount(component: PaymentComponent, sale_price_manwon: int) -> int | None:
     if component.total_amount_manwon is not None:
         if component.total_ratio is not None:
-            ratio_amount = _ratio_amount(component.total_ratio, sale_price_manwon)
-            if ratio_amount is None or ratio_amount != component.total_amount_manwon:
+            ratio_amount = Decimal(str(component.total_ratio)) * Decimal(sale_price_manwon)
+            explicit_amount = Decimal(component.total_amount_manwon)
+            # Source-audited ratios originate as binary floats. Accept only a
+            # sub-nanomanwon representation artifact around an exact explicit
+            # amount; a true half-manwon or material mismatch still abstains.
+            if abs(ratio_amount - explicit_amount) > Decimal("1e-9"):
                 return None
         return component.total_amount_manwon
     if component.total_ratio is not None:

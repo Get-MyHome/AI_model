@@ -22,6 +22,7 @@ from get_myhome_ai.models import (
     RiskClauseCode,
     ValueOrigin,
 )
+from get_myhome_ai.normalization import normalize_unit_type_name
 
 RATIO_HEADER = re.compile(
     r"(?P<down_text>계약\s*금\s*\(\s*(?P<down>\d+(?:\.\d+)?)\s*%\s*\))"
@@ -262,7 +263,12 @@ def _append_evidence(items: list[Evidence], item: Evidence) -> None:
 
 
 def _won_values(raw_text: str) -> list[int]:
-    return [int(value.replace(",", "")) for value in re.findall(r"\d[\d,]{3,}", raw_text)]
+    # Do not mistake the fractional area in a unit label such as 46.9070A for
+    # a won amount. The first digit of an amount cannot follow a digit or dot.
+    return [
+        int(value.replace(",", ""))
+        for value in re.findall(r"(?<![\d.])\d[\d,]{3,}", raw_text)
+    ]
 
 
 def _exact_manwon(value_won: int) -> int | None:
@@ -561,9 +567,7 @@ def _ground_payment(
                 contract_values = payment_values[: -(interim_count + 1)]
                 interim_values = payment_values[-(interim_count + 1) : -1]
                 balance_value = payment_values[-1]
-                schedule.down_payment.total_amount_manwon = _exact_manwon(
-                    sum(contract_values)
-                )
+                schedule.down_payment.total_amount_manwon = _exact_manwon(sum(contract_values))
                 days_due = re.search(r"(\d+)\s*일\s*이내", section)
                 schedule.down_payment.installments = [
                     Installment(
@@ -1037,9 +1041,7 @@ def _ground_settlement(
     elif direct or entry_document:
         page_number, match = direct or entry_document  # type: ignore[misc]
         raw_text = match.group("raw")
-        loan.settlement_requirement = (
-            LoanSettlementRequirement.REPAY_OR_CONVERT_TO_MORTGAGE
-        )
+        loan.settlement_requirement = LoanSettlementRequirement.REPAY_OR_CONVERT_TO_MORTGAGE
         loan.settlement_deadline_text = _settlement_deadline(raw_text)
         for field in (
             "/interim_loan/settlement_requirement",
@@ -1127,9 +1129,7 @@ def _ground_risk_clauses(
     mediation = _find(pages, MEDIATION_NOT_GUARANTEED)
     individual = _find(pages, INDIVIDUAL_REVIEW_FINAL) or _find(pages, INDIVIDUAL_REVIEW)
     terms_by_type = _find(pages, TERMS_BY_TYPE)
-    interest_burden = _find(pages, INTEREST_BORROWER_BURDEN) or _find(
-        pages, INTEREST_SETTLEMENT
-    )
+    interest_burden = _find(pages, INTEREST_BORROWER_BURDEN) or _find(pages, INTEREST_SETTLEMENT)
 
     direct_matches = (
         (
@@ -1162,9 +1162,7 @@ def _ground_risk_clauses(
             _risk_clause(
                 code=code,
                 origin=ValueOrigin.EXTRACTED,
-                evidence=[
-                    Evidence(field=field, page=page_number, raw_text=match.group("raw"))
-                ],
+                evidence=[Evidence(field=field, page=page_number, raw_text=match.group("raw"))],
             )
         )
 
@@ -1173,9 +1171,7 @@ def _ground_risk_clauses(
         and interest_burden is None
         and loan.interest_type == InterestType.DEFERRED_INTEREST
     ):
-        interest_evidence = _supporting_evidence(
-            source_evidence, "/interim_loan/interest_type"
-        )
+        interest_evidence = _supporting_evidence(source_evidence, "/interim_loan/interest_type")
         if interest_evidence is not None:
             clauses.append(
                 _risk_clause(
@@ -1210,9 +1206,7 @@ def _ground_risk_clauses(
             arranged_evidence = _supporting_evidence(
                 source_evidence, "/interim_loan/arranged_ratio"
             )
-            supports = [
-                item for item in (interim_evidence, arranged_evidence) if item is not None
-            ]
+            supports = [item for item in (interim_evidence, arranged_evidence) if item is not None]
             if len(supports) == 2:
                 clauses.append(
                     _risk_clause(
@@ -1253,9 +1247,7 @@ def _ground_exception_flags(
             Evidence(field="/exception_flags", page=page_number, raw_text=match.group("raw"))
         )
 
-    individual_review = _find(pages, INDIVIDUAL_REVIEW_FINAL) or _find(
-        pages, INDIVIDUAL_REVIEW
-    )
+    individual_review = _find(pages, INDIVIDUAL_REVIEW_FINAL) or _find(pages, INDIVIDUAL_REVIEW)
     if individual_review:
         flags.append(ExceptionFlag.INDIVIDUAL_REVIEW_NOTED)
         page_number, match = individual_review
@@ -1331,6 +1323,11 @@ def _cost_payment_template(
     if not candidates:
         return [], None
     header_index, labels = candidates[-1]
+    # Flattened PDF headers can contain both the stage label ("계약금") and its
+    # due-text label ("계약시"). Treating both as stages creates a phantom
+    # payment and prevents exact schedule evidence from being attached.
+    if "계약금" in labels:
+        labels = [label for label in labels if label.replace(" ", "") != "계약시"]
     context = " ".join(lines[header_index:row_index])
     raw_header = "\n".join(lines[header_index:row_index]).strip()
     header_evidence = raw_header[-1000:]
@@ -1384,17 +1381,23 @@ def _review_cost_row_from_evidence(
     """
 
     cost = draft.additional_costs[cost_index]
-    if cost.total_amount_manwon is None or any(
-        payment.amount_manwon is None for payment in cost.payments
+    if cost.total_amount_manwon is None:
+        return None
+    payment_amounts = [payment.amount_manwon for payment in cost.payments]
+    all_payment_amounts_unknown = bool(payment_amounts) and all(
+        amount is None for amount in payment_amounts
+    )
+    if (
+        payment_amounts
+        and not all_payment_amounts_unknown
+        and any(amount is None for amount in payment_amounts)
     ):
         return None
-    expected_amounts = [
-        cost.total_amount_manwon * 10_000,
-        *(payment.amount_manwon * 10_000 for payment in cost.payments),
-    ]
+    expected_amounts = [cost.total_amount_manwon * 10_000]
+    expected_amounts.extend(amount * 10_000 for amount in payment_amounts if amount is not None)
     page_map = {page.number: page for page in pages}
     evidence_field = f"/additional_costs/{cost_index}"
-    normalized_unit = _normalized(unit_name)
+    normalized_unit = normalize_unit_type_name(unit_name)
     for item in draft.evidence:
         if item.field != evidence_field:
             continue
@@ -1404,9 +1407,42 @@ def _review_cost_row_from_evidence(
         normalized_quote = _normalized(item.raw_text)
         if normalized_quote not in _normalized(page.text):
             continue
-        if normalized_unit not in normalized_quote:
+        unit_tokens = re.findall(
+            r"(?<![\d.,A-Za-z])0*\d{2,3}(?:\.\d+)?[A-Za-z]*(?![\d.,A-Za-z])",
+            item.raw_text,
+        )
+        normalized_aliases = {
+            normalized.upper()
+            for token in unit_tokens
+            if (normalized := normalize_unit_type_name(token)) is not None
+        }
+        if normalized_unit is None:
             continue
-        if _won_values(item.raw_text) != expected_amounts:
+        normalized_target = normalized_unit.upper()
+        unit_matches = normalized_target in normalized_aliases
+        if not unit_matches and re.fullmatch(r"\d{2,3}", normalized_target):
+            # Some APIs expose a parent type (e.g. 59) while the exact cost row
+            # groups equal-priced letter variants (e.g. 59A, 59B). Amount-lock
+            # checks below still prevent reusing a different option row.
+            unit_matches = any(
+                re.fullmatch(re.escape(normalized_target) + r"[A-Z]+", alias)
+                for alias in normalized_aliases
+            )
+        if not unit_matches:
+            continue
+        row_amounts = _won_values(item.raw_text)
+        if all_payment_amounts_unknown:
+            # Some source rows are exact in won but their 10/20/70 splits are
+            # not representable by the integer-manwon schema. The reviewer
+            # retains only the exact total and header-derived schedule. Require
+            # one total plus one source amount per retained installment; never
+            # round or copy an unrepresentable split.
+            if (
+                len(row_amounts) != len(payment_amounts) + 1
+                or row_amounts[0] != expected_amounts[0]
+            ):
+                continue
+        elif row_amounts != expected_amounts:
             continue
         return item.page, item.raw_text
     return None
@@ -1704,10 +1740,14 @@ _REVIEW_REGROUNDED_EVIDENCE_PATHS = {
 
 
 def _is_review_regrounded_evidence(field: str) -> bool:
-    return field in _REVIEW_REGROUNDED_EVIDENCE_PATHS or re.fullmatch(
-        r"/additional_costs/\d+/payments",
-        field,
-    ) is not None
+    return (
+        field in _REVIEW_REGROUNDED_EVIDENCE_PATHS
+        or re.fullmatch(
+            r"/additional_costs/\d+/payments",
+            field,
+        )
+        is not None
+    )
 
 
 def reground_review_metadata(
@@ -1726,9 +1766,7 @@ def reground_review_metadata(
 
     grounded = draft.model_copy(deep=True)
     evidence = [
-        item
-        for item in grounded.evidence
-        if not _is_review_regrounded_evidence(item.field)
+        item for item in grounded.evidence if not _is_review_regrounded_evidence(item.field)
     ]
     for item in _ground_settlement(grounded, pages):
         _append_evidence(evidence, item)

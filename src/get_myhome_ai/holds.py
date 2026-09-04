@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import re
+import unicodedata
+
 from get_myhome_ai.models import (
     AnalysisStatus,
     ExceptionFlag,
@@ -12,6 +15,7 @@ from get_myhome_ai.models import (
     LoanArrangementStatus,
     LoanSettlementRequirement,
     ValidationReport,
+    ValueOrigin,
 )
 
 HOLD_TEXT: dict[HoldReasonCode, tuple[str, str]] = {
@@ -122,6 +126,28 @@ def _make(code: HoldReasonCode) -> Hold:
     )
 
 
+def _has_source_locked_interim_allocation(
+    draft: ExtractionDraft,
+    validation: ValidationReport,
+) -> bool:
+    """Recognize only a validated quote that explicitly allocates both installment ranges."""
+
+    if not validation.passed:
+        return False
+    for evidence in draft.evidence:
+        if evidence.field != "/interim_loan/self_funding_origin":
+            continue
+        compact = re.sub(r"\s+", "", unicodedata.normalize("NFKC", evidence.raw_text))
+        required_literals = (
+            "본아파트의중도금대출은이자후불제이며",
+            "1~4회차대출을받았을경우5~6회차중도금",
+            "정부정책및금융권사정등의사유로다소변경할수있음",
+        )
+        if all(literal in compact for literal in required_literals):
+            return True
+    return False
+
+
 def derive_holds(
     draft: ExtractionDraft,
     validation: ValidationReport,
@@ -192,8 +218,10 @@ def derive_holds(
         and loan.arranged_amount_manwon is None
     ):
         codes.append(HoldReasonCode.INTERIM_LOAN_RATIO_MISSING)
-    if loan.arrangement_status != LoanArrangementStatus.NOT_AVAILABLE and (
-        (loan.self_funding_ratio or 0) > 0 or (loan.self_funding_amount_manwon or 0) > 0
+    if (
+        loan.arrangement_status != LoanArrangementStatus.NOT_AVAILABLE
+        and ((loan.self_funding_ratio or 0) > 0 or (loan.self_funding_amount_manwon or 0) > 0)
+        and not _has_source_locked_interim_allocation(draft, validation)
     ):
         # The known self-funding burden is a risk factor, not a HOLD by itself.
         # Until the contract carries per-installment loan coverage, however, the
@@ -233,7 +261,19 @@ def derive_holds(
         codes.append(HoldReasonCode.SOURCE_CONFLICT)
 
     unique_codes = list(dict.fromkeys(codes))
-    return [_make(code) for code in unique_codes]
+    holds = [_make(code) for code in unique_codes]
+    if loan.self_funding_origin == ValueOrigin.EXTRACTED:
+        for hold in holds:
+            if hold.reason_code == HoldReasonCode.SELF_FUNDING_SCHEDULE_UNKNOWN:
+                hold.message = (
+                    "공고문상 알선 범위 밖 중도금의 직접 납부는 확인됐지만 "
+                    "적용 회차가 확인되지 않았어요."
+                )
+                hold.next_action = (
+                    "알선 대출과 알선 범위 밖 금액이 각각 어느 회차에 "
+                    "얼마씩 적용되는지 시행사에 확인하세요."
+                )
+    return holds
 
 
 def derive_analysis_status(validation: ValidationReport, holds: list[Hold]) -> AnalysisStatus:

@@ -13,6 +13,29 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from get_myhome_ai.audited_candidate_repairs import apply_audited_repairs
+from get_myhome_ai.expanded_audited_candidate_repairs import (
+    EXPANDED_AUDITED_POLICY_DATA,
+    apply_expanded_audited_repairs,
+)
+from get_myhome_ai.expanded_audited_repairs_a import (
+    _POLICIES as _EXPANDED_AUDITED_POLICIES_A,
+)
+from get_myhome_ai.expanded_audited_repairs_a import (
+    repair_expanded_audited_candidate_a,
+)
+from get_myhome_ai.expanded_audited_repairs_allocation import (
+    _POLICIES as _EXPANDED_AUDITED_ALLOCATION_POLICIES,
+)
+from get_myhome_ai.expanded_audited_repairs_allocation import (
+    repair_expanded_audited_allocation,
+)
+from get_myhome_ai.expanded_audited_repairs_b import (
+    _POLICIES as _EXPANDED_AUDITED_POLICIES_B,
+)
+from get_myhome_ai.expanded_audited_repairs_b import (
+    repair_expanded_audited_candidate_b,
+)
 from get_myhome_ai.models import (
     AdditionalCostType,
     AnalysisResponse,
@@ -121,19 +144,6 @@ _AUDITED_DOCUMENTS: dict[str, _DocumentPolicy] = {
         (7, "상기 공급금액에는 발코니 확장 비용이 미포함되어 있습니다"),
         (7, "발코니 확장 및 미확장은 계약자의 선택"),
     ),
-    "2026000356": _DocumentPolicy(
-        "85f7703f21163866d23debf86a0a76e2e9e73863edb7696eeffc1ad88255bdfc",
-        71,
-        frozenset(
-            {("01", "59", 76472), ("02", "74A", 95920), ("03", "74B", 94219), ("05", "84B", 109367)}
-        ),
-        (9, "상기 공급금액에는 발코니 확장 및 추가 선택품목(유상옵션) 비용이 미포함된 가격이며"),
-        (
-            9,
-            "발코니 확장 및 추가 선택품목(유상옵션)의 계약은 분양계약 시 또는 "
-            "분양계약 이후에 별도의 계약을 통해 선택이 가능합니다",
-        ),
-    ),
     "2026000358": _DocumentPolicy(
         "a100bfaaf4c2e16a92021b1b5f85688c9723a0e9963ff5479cdbfb2e79f4ff22",
         57,
@@ -153,27 +163,17 @@ _AUDITED_DOCUMENTS: dict[str, _DocumentPolicy] = {
             "분양계약 이후에 별도의 계약을 통해 선택이 가능합니다",
         ),
     ),
-    "2026000364": _DocumentPolicy(
-        "b6ef16cf0d3cc4edfd3e9089e701b8f6ab53a2be8aaefcda9908206cdb3bdef0",
-        74,
-        frozenset(
-            {
-                ("01", "44A", 132510),
-                ("02", "44B", 130370),
-                ("03", "49", 146600),
-                ("04", "59A", 172900),
-                ("05", "59B", 183790),
-                ("06", "59C", 186630),
-                ("07", "59D", 185080),
-            }
-        ),
-        (8, "상기 공급금액에는 발코니 확장 비용, 추가선택 품목 비용이 미포함 되었으며"),
-        (8, "주택 분양계약 체결 시 별도계약을 통해 선택이 가능합니다"),
-    ),
     "2026000377": _DocumentPolicy(
         "90df6ecf889a6e3a13c6f725f3fd00b90284617777aa77b7a45403227f7d7433",
         73,
-        frozenset({("01", "49", 56300), ("02", "59B", 72500), ("04", "84B", 94000)}),
+        frozenset(
+            {
+                ("01", "49", 56300),
+                ("02", "59B", 72500),
+                ("03", "74", 85700),
+                ("04", "84B", 94000),
+            }
+        ),
         (9, "상기 공급금액에는 발코니 확장 비용, 추가선택 품목 비용이 미포함 되었으며"),
         (9, "주택 분양계약 체결 시 별도계약을 통해 선택이 가능합니다"),
     ),
@@ -198,6 +198,75 @@ _AUDITED_DOCUMENTS: dict[str, _DocumentPolicy] = {
         ),
     ),
 }
+
+_expanded_policy_ids = (
+    set(EXPANDED_AUDITED_POLICY_DATA)
+    | set(_EXPANDED_AUDITED_POLICIES_A)
+    | set(_EXPANDED_AUDITED_ALLOCATION_POLICIES)
+    | set(_EXPANDED_AUDITED_POLICIES_B)
+)
+if _expanded_policy_ids & set(_AUDITED_DOCUMENTS):
+    raise AssertionError("확장 감사 문서가 기존 registry와 중복됩니다.")
+_AUDITED_DOCUMENTS.update(
+    {
+        complex_id: _DocumentPolicy(**values)
+        for complex_id, values in EXPANDED_AUDITED_POLICY_DATA.items()
+    }
+)
+_AUDITED_DOCUMENTS.update(
+    {
+        complex_id: _DocumentPolicy(
+            source_sha256=policy.source_sha256,
+            source_page_count=policy.source_page_count,
+            targets=frozenset(
+                (unit_id, target.unit_name, target.sale_price_manwon)
+                for unit_id, target in policy.targets.items()
+            ),
+            # These fields are unused for the A workflow because its own
+            # source-locked cost repair handles every target before the generic
+            # balcony filter is reached.
+            not_included_evidence=(policy.payment_header_page, policy.payment_header_quote),
+            optional_evidence=(policy.payment_header_page, policy.payment_header_quote),
+        )
+        for complex_id, policy in _EXPANDED_AUDITED_POLICIES_A.items()
+    }
+)
+
+_AUDITED_DOCUMENTS.update(
+    {
+        complex_id: _DocumentPolicy(
+            source_sha256=policy.source_sha256,
+            source_page_count=policy.source_page_count,
+            targets=frozenset(
+                (unit_id, target.unit_name, target.sale_price_manwon)
+                for unit_id, target in policy.targets.items()
+            ),
+            # Unused: the allocation repair performs complete source-locked
+            # schedule, loan, and cost correction before generic handling.
+            not_included_evidence=(policy.payment_page, "unused"),
+            optional_evidence=(policy.payment_page, "unused"),
+        )
+        for complex_id, policy in _EXPANDED_AUDITED_ALLOCATION_POLICIES.items()
+    }
+)
+
+_AUDITED_DOCUMENTS.update(
+    {
+        complex_id: _DocumentPolicy(
+            source_sha256=policy.source_sha256,
+            source_page_count=policy.source_page_count,
+            targets=frozenset(
+                (unit_id, target.unit_name, target.sale_price_manwon)
+                for unit_id, target in policy.targets.items()
+            ),
+            # Unused: the B repair performs complete source-locked schedule,
+            # loan, and canonical balcony handling before generic handling.
+            not_included_evidence=(policy.payment_header_page, policy.payment_header_quote),
+            optional_evidence=(policy.payment_header_page, policy.payment_header_quote),
+        )
+        for complex_id, policy in _EXPANDED_AUDITED_POLICIES_B.items()
+    }
+)
 
 AUDITED_CANDIDATE_COUNT = sum(len(policy.targets) for policy in _AUDITED_DOCUMENTS.values())
 
@@ -230,7 +299,7 @@ def _policy_for(result: AnalysisResponse) -> _DocumentPolicy:
     key = (target.unit_type_id or "", target.unit_type_name or "", target.sale_price_manwon or -1)
     if policy is None or key not in policy.targets:
         raise CandidateCorrectionError(
-            f"감사 대상 49건에 포함되지 않은 target입니다: {result.complex_id}/{key}"
+            f"감사 대상 후보에 포함되지 않은 target입니다: {result.complex_id}/{key}"
         )
     if (
         result.meta.source_sha256 != policy.source_sha256
@@ -385,7 +454,7 @@ def correct_audited_review_candidate(
     source_sha256: str,
     pages: list[PdfPage],
 ) -> tuple[AnalysisResponse, list[str]]:
-    """Prepare one of the 49 audited tuples without granting review approval."""
+    """Prepare one of the source-audited tuples without granting review approval."""
 
     if result.review_status == ReviewStatus.REVIEWED or result.reviewer or result.reviewed_at:
         raise CandidateCorrectionError(
@@ -396,21 +465,73 @@ def correct_audited_review_candidate(
         raise CandidateCorrectionError("실제 PDF가 감사한 source lock과 다릅니다.")
 
     corrected = result.model_copy(deep=True)
-    actions = _ground_balcony_cost(corrected, pages, policy)
+    corrected_a = repair_expanded_audited_candidate_a(corrected, pages=pages)
+    corrected_allocation = (
+        corrected_a
+        if corrected_a is not corrected
+        else repair_expanded_audited_allocation(corrected, pages=pages)
+    )
+    corrected_b = (
+        corrected_allocation
+        if corrected_allocation is not corrected
+        else repair_expanded_audited_candidate_b(corrected, pages=pages)
+    )
+    if corrected_b is corrected:
+        actions, handles_additional_costs = apply_audited_repairs(corrected, pages=pages)
+        expanded_actions, expanded_handles_costs = apply_expanded_audited_repairs(
+            corrected,
+            pages=pages,
+        )
+        actions.extend(expanded_actions)
+        handles_additional_costs = handles_additional_costs or expanded_handles_costs
+    else:
+        if corrected_a is not corrected:
+            action = "GROUND_EXPANDED_A_EXACT_SOURCE_FACTS"
+        elif corrected_allocation is not corrected:
+            action = "GROUND_EXACT_INSTALLMENT_ALLOCATION"
+        else:
+            action = "GROUND_EXPANDED_B_EXACT_SOURCE_FACTS"
+        actions = [action]
+        corrected = corrected_b
+        handles_additional_costs = True
+    if not handles_additional_costs:
+        actions.extend(_ground_balcony_cost(corrected, pages, policy))
     if policy.repair_sub_manwon_payment_row:
         actions.extend(_repair_sub_manwon_payment_row(corrected, pages))
-    prepared = prepare_review_draft(corrected, source_sha256=source_sha256, pages=pages)
+    # Custom repair modules source-check and prepare their own output. Run the
+    # shared canonical preparation once more anyway so every handler leaves the
+    # same stable deterministic envelope (notably ``derived_fields``). A final
+    # repeat must be equivalent at the model level.
+    prepared = prepare_review_draft(
+        corrected,
+        source_sha256=source_sha256,
+        pages=pages,
+    )
+    repeated = prepare_review_draft(
+        prepared,
+        source_sha256=source_sha256,
+        pages=pages,
+    )
+    if prepared.model_dump(mode="json") != repeated.model_dump(mode="json"):
+        raise CandidateCorrectionError("교정 후 canonical 재검증이 멱등이 아닙니다.")
     if not prepared.validation.passed or prepared.review_status != ReviewStatus.AUTO_EXTRACTED:
+        target = prepared.target_unit
+        key = (
+            f"{prepared.complex_id}/{target.unit_type_id or '-'}"
+            f"/{target.unit_type_name or '-'}/{target.sale_price_manwon or '-'}"
+        )
+        issue_codes = ",".join(issue.code for issue in prepared.validation.issues) or "none"
         raise CandidateCorrectionError(
-            "교정 후 출처 재검증을 통과한 AUTO_EXTRACTED 초안이 아닙니다."
+            f"{key}: 교정 후 출처 재검증을 통과한 AUTO_EXTRACTED 초안이 "
+            f"아닙니다 (review_status={prepared.review_status.value}, "
+            f"validation_passed={prepared.validation.passed}, issues={issue_codes})."
         )
     if prepared.reviewer is not None or prepared.reviewed_at is not None:
         raise AssertionError("교정 유틸리티가 검수자 메타데이터를 생성했습니다.")
     if ExceptionFlag.ADDITIONAL_COST_SCOPE_LIMITED not in prepared.exception_flags:
         raise CandidateCorrectionError("비발코니 유상옵션 범위 제한 근거를 확인하지 못했습니다.")
     if not any(
-        hold.reason_code == HoldReasonCode.ADDITIONAL_COST_SCOPE_LIMITED
-        and hold.blocking is False
+        hold.reason_code == HoldReasonCode.ADDITIONAL_COST_SCOPE_LIMITED and hold.blocking is False
         for hold in prepared.holds
     ):
         raise CandidateCorrectionError("비발코니 유상옵션 범위 제한 HOLD를 확인하지 못했습니다.")
@@ -460,9 +581,7 @@ def _copy_review_workspace(
     template = load_review_approval_manifest(source_template)
     if template.draft_batch_id != manifest.batch_id:
         raise CandidateCorrectionError("원본 승인 template의 batch_id가 다릅니다.")
-    if {item.draft_id for item in template.items} != {
-        entry.draft_id for entry in manifest.drafts
-    }:
+    if {item.draft_id for item in template.items} != {entry.draft_id for entry in manifest.drafts}:
         raise CandidateCorrectionError("원본 승인 template의 항목 집합이 다릅니다.")
 
     # Keep the immutable batch manifest byte-for-byte identical. Draft edits are
@@ -470,9 +589,7 @@ def _copy_review_workspace(
     shutil.copy2(manifest_path, stage / "review-draft-manifest.json")
 
 
-def _write_pending_approval_template(
-    *, manifest: ReviewDraftBatchManifest, stage: Path
-) -> None:
+def _write_pending_approval_template(*, manifest: ReviewDraftBatchManifest, stage: Path) -> None:
     manifest_path = stage / "review-draft-manifest.json"
     template = ReviewApprovalManifest(
         draft_batch_id=manifest.batch_id,
@@ -505,7 +622,7 @@ def prepare_audited_review_candidates(
     pdf_loader: PdfLoader = load_pdf_from_path,
     page_extractor: PageExtractor = extract_pdf_pages,
 ) -> dict[str, Any]:
-    """Atomically copy a full review workspace and correct 49 PENDING drafts."""
+    """Atomically copy a full review workspace and correct source-audited PENDING drafts."""
 
     draft_manifest_path = draft_manifest_path.resolve()
     output_dir = output_dir.absolute()
@@ -529,7 +646,7 @@ def prepare_audited_review_candidates(
     missing = sorted(wanted - set(entries))
     if missing or len(wanted) != AUDITED_CANDIDATE_COUNT:
         raise CandidateCorrectionError(
-            f"감사 target 49건이 배치에 정확히 존재하지 않습니다: {missing!r}"
+            f"감사 target 후보가 배치에 정확히 존재하지 않습니다: {missing!r}"
         )
 
     output_dir.parent.mkdir(parents=True, exist_ok=True)

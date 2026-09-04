@@ -88,7 +88,7 @@ def _parser() -> argparse.ArgumentParser:
 
     correction_candidates = commands.add_parser(
         "prepare-audited-review-candidates",
-        help="감사된 49건의 fail-closed 교정 후보를 PENDING으로 준비합니다.",
+        help="감사 대상의 fail-closed 교정 후보를 PENDING으로 준비합니다.",
     )
     correction_candidates.add_argument("--draft-manifest", type=Path, required=True)
     correction_candidates.add_argument("--output-dir", type=Path, required=True)
