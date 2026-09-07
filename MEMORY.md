@@ -12,7 +12,9 @@
   Existing 154 REVIEWED artifacts unchanged. Do not impersonate 안지홍 or auto-promote future sources.
 - Added `python -m get_myhome_ai.prepare_inbox`, request-key-isolated inventory option,
   `deploy/get-myhome-review-inbox.{service,timer}` and tests. Timer installed/enabled, successful
-  minute-scale runs verified. Prepares drafts from completed API captures only; no crawling,
+  initially minute-scale runs verified; user then requested daily only. Timer now uses
+  `OnCalendar=*-*-* 09:00:00 Asia/Seoul`, `Persistent=true` (one catch-up after missed run).
+  Prepares drafts from completed API captures only; no crawling,
   extra inference, autonomous semantic audit or human approval. API process not restarted.
 - Verification: 371 tests passed, Ruff and compileall passed, local health OK. Timer runtime success.
 - Next: actual human source review/approval of eligible corrected targets, then existing source-locked

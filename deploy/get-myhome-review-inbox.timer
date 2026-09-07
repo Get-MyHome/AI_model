@@ -1,10 +1,10 @@
 [Unit]
-Description=Check received Homm PDF review inbox every minute
+Description=Check received Homm PDF review inbox daily at 09:00 Asia/Seoul
 
 [Timer]
-OnBootSec=90
-OnUnitInactiveSec=60
-AccuracySec=5
+OnCalendar=*-*-* 09:00:00 Asia/Seoul
+Persistent=true
+AccuracySec=1min
 Unit=get-myhome-review-inbox.service
 
 [Install]
