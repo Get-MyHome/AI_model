@@ -87,7 +87,12 @@ def _matching_auto_results(auto_dir: Path, request_key: str) -> list[AnalysisRes
     return results
 
 
-def build_captured_inventory(*, capture_dir: Path, output_path: Path) -> dict[str, Any]:
+def build_captured_inventory(
+    *,
+    capture_dir: Path,
+    output_path: Path,
+    request_keys: frozenset[str] | None = None,
+) -> dict[str, Any]:
     """Build an exact review inventory from URL-free production captures."""
 
     capture_dir = capture_dir.expanduser().resolve(strict=True)
@@ -100,6 +105,8 @@ def build_captured_inventory(*, capture_dir: Path, output_path: Path) -> dict[st
     targets: list[dict[str, Any]] = []
     seen: dict[tuple[str, str, str, int], str] = {}
     for request_path in sorted(request_dir.glob("*.json")):
+        if request_keys is not None and request_path.stem not in request_keys:
+            continue
         request = _read_object(request_path)
         if request.get("schema_version") != CAPTURE_SCHEMA_VERSION:
             raise CapturedInventoryError(f"지원하지 않는 캡처 스키마입니다: {request_path}")

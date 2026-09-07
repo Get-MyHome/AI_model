@@ -1,5 +1,24 @@
 # Project memory
 
+## 2026-09-07 received-PDF preparation
+
+- User authorized proactively preparing newly received PDFs; backend and reviewed gate remain unchanged.
+- Actual capture inbox: 8 PDFs/11 tuples, of which 7 PDFs/10 tuples are new and one tuple already covered.
+- Source audits in `../tmp/captured-review-20260907/audit-*.md`: 8 corrected targets validation=true,
+  0394/01 blocked by sub-manwon installment precision; 0414/11 blocked by separate LH fund loan structure.
+  0401/01 is 10/0/90 public conversion supply: validated extraction, not proven compatible funding logic.
+- Corrected drafts copied to `.local/prepared-inbox/jobs/`; exact paths/hashes in
+  `.local/prepared-inbox/source-audit-20260907.json`. All new human approval remains PENDING.
+  Existing 154 REVIEWED artifacts unchanged. Do not impersonate 안지홍 or auto-promote future sources.
+- Added `python -m get_myhome_ai.prepare_inbox`, request-key-isolated inventory option,
+  `deploy/get-myhome-review-inbox.{service,timer}` and tests. Timer installed/enabled, successful
+  minute-scale runs verified. Prepares drafts from completed API captures only; no crawling,
+  extra inference, autonomous semantic audit or human approval. API process not restarted.
+- Verification: 371 tests passed, Ruff and compileall passed, local health OK. Timer runtime success.
+- Next: actual human source review/approval of eligible corrected targets, then existing source-locked
+  batch approval/deployment. Unknown incoming sources remain AUTO_EXTRACTED/NEEDS_REVIEW.
+- See `docs/NEW_SOURCE_PREPARATION.md`. Backend handoff corrected: normalized unit name IS part of lookup.
+
 ## Current state
 
 - Batch-first PDF extraction and the thin authenticated FastAPI endpoint are implemented.

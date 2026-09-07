@@ -41,12 +41,16 @@ backend가 이미 산출한 경로별 한도와 현금 스냅샷만 받아 advis
 ## 분석·검수·적재 단위
 
 MVP는 공고 한 건을 한 번만 분석하는 것이 아니라 backend의 각 `unit_types[]`를
-`(source_sha256, complex_id, unit_type_id, sale_price_manwon)` 불변 키로 사전 분석합니다.
+`(source_sha256, complex_id, unit_type_id, normalized_unit_type_name, sale_price_manwon)`
+불변 키로 사전 분석합니다.
 `/api/analyze`는 fresh URL에서 PDF를 먼저 수령해 SHA-256을 계산하고, 정확히 같은 키의
 `REVIEWED` 검수본이 있으면 Qwen 재호출 없이 반환합니다. 검수본이 없으면
 `AUTO_EXTRACTED`를 반환하고 backend는 사용자 자금판정을 HOLD합니다. `REVIEWED`에는
-검수자·검수시각·검증 통과와 정확한 대상 키가 반드시 있어야 합니다. `unit_type_name`은
-`059.9883A → 59A` 정규화 때문에 조회 키에서는 제외하지만 응답에는 정규화해 보존합니다.
+검수자·검수시각·검증 통과와 정확한 대상 키가 반드시 있어야 합니다. `unit_type_name`도
+`059.9883A → 59A`로 정규화한 뒤 일치하는지 확인합니다.
+
+신규 수신 원본의 [자동 검수 준비 큐](NEW_SOURCE_PREPARATION.md)는 기존 요청·응답
+계약을 바꾸지 않으며, 사람 검수 승인이나 REVIEWED 운영 등록을 자동 수행하지 않습니다.
 
 ## AI 증거 응답 — 최종 금융판정 아님
 

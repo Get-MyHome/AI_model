@@ -1,0 +1,11 @@
+[Unit]
+Description=Check received Homm PDF review inbox every minute
+
+[Timer]
+OnBootSec=90
+OnUnitInactiveSec=60
+AccuracySec=5
+Unit=get-myhome-review-inbox.service
+
+[Install]
+WantedBy=timers.target

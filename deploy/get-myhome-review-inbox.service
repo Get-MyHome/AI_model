@@ -1,0 +1,12 @@
+[Unit]
+Description=Prepare newly received Homm PDF review drafts (no automatic approval)
+
+[Service]
+Type=oneshot
+WorkingDirectory=/mnt/20t/AI_해커톤/AI_model
+EnvironmentFile=/mnt/20t/AI_해커톤/AI_model/.local/runtime/get-myhome-ai.env
+ExecStart=/home/soccz/.pyenv/versions/3.12.9/bin/python -m get_myhome_ai.prepare_inbox --capture-dir /mnt/20t/AI_해커톤/AI_model/.local/review-capture --output-dir /mnt/20t/AI_해커톤/AI_model/.local/prepared-inbox
+UMask=0077
+Nice=10
+NoNewPrivileges=true
+TimeoutStartSec=180
